@@ -1,134 +1,128 @@
 ---
 name: test-studio-recorder
-description: Skill para planejar e implementar a funcionalidade de gravação de testes do Test Studio — captura de ações do usuário no browser e conversão em steps. Feature do roadmap V1/V2. Use para projetar o recorder antes de implementar.
+description: Skill para evoluir o recorder real do Test Studio. Use para mexer na sessão Playwright, captura de interações, geração de steps e UX do preview. Esta skill deve partir do recorder já implementado, não de um plano teórico.
 ---
 
 # Skill: test-studio-recorder
 
-Quando esta skill for acionada, você planeja e projeta a funcionalidade de gravação de testes (record & playback) do Test Studio.
+Use esta skill quando o trabalho envolver gravação de cenário.
 
-> Esta é uma feature do roadmap V1/V2 — não faz parte do MVP. Use esta skill para projetar a solução antes de implementar.
+## Estado atual do recorder
 
-## O que é o Recorder
+O recorder já existe e funciona com sessão real do Playwright.
 
-O Recorder permite que o usuário grave suas próprias ações no browser e o sistema converta automaticamente em steps do Test Studio, sem precisar escrever nada.
+Arquivos centrais:
 
-**Fluxo esperado:**
-1. Usuário clica em "Gravar teste" no frontend
-2. Sistema abre um browser controlado pelo Playwright
-3. Usuário navega e interage normalmente
-4. Cada ação (click, fill, navigation) é capturada
-5. Sistema converte em steps JSON do Test Studio
-6. Usuário revisa, edita e salva o cenário
+- `apps/runner/src/recorder.ts`
+- `apps/runner/src/server.ts`
+- `apps/web/src/pages/CaseBuilderPage.tsx`
+- `docs/recorder-mode.md`
 
-## Abordagens possíveis
+## Como ele funciona hoje
 
-### Opção A: Playwright Codegen (recomendada para MVP do recorder)
+1. O frontend pede uma sessão ao runner.
+2. O runner abre um browser/context/page Playwright.
+3. O frontend busca screenshots da sessão.
+4. O usuário escolhe a ação no builder.
+5. O clique no preview é traduzido em coordenadas.
+6. O runner resolve o alvo, executa a ação e devolve o step gerado.
 
-Usar `playwright codegen` como backend — ele já captura ações e gera código.
+## O que já é suportado
 
-```typescript
-// Iniciar gravação via Playwright
-import { chromium } from 'playwright'
+- `visit`
+- `click`
+- `fill`
+- `select`
+- `check`
+- `assertVisible`
+- `assertText`
+- navegação de sessão
+- encerramento de sessão
 
-const browser = await chromium.launch({ headless: false })
-const context = await browser.newContext()
+## Princípios do recorder
 
-// Playwright Codegen já faz a captura
-// Precisamos interceptar os eventos gerados
-```
+### 1. Seletor estável primeiro
 
-**Prós:** Pronto para usar, robusto
-**Contras:** Difícil integrar com nossa estrutura JSON diretamente
+Prioridade de seleção:
 
-### Opção B: Injeção de script no browser (mais integrada)
+1. `data-testid`
+2. `id`
+3. `name`
+4. `aria-*`
+5. fallback seguro
 
-Injetar um script JavaScript no browser que captura eventos e envia de volta para o runner via WebSocket.
+### 2. O recorder grava intenção útil
 
-```typescript
-// Script injetado no browser
-window.addEventListener('click', (e) => {
-  const target = e.target as HTMLElement
-  const selector = generateSelector(target) // gera seletor único
-  ws.send(JSON.stringify({ type: 'click', selector }))
-})
+Ele não deve despejar ruído quando puder produzir algo mais estável.
 
-window.addEventListener('input', (e) => {
-  const target = e.target as HTMLInputElement
-  ws.send(JSON.stringify({ type: 'fill', selector: generateSelector(target), value: target.value }))
-})
-```
+Exemplos:
 
-**Prós:** Controle total, integração nativa com nosso formato JSON
-**Contras:** Precisa de gerador de seletores robusto
+- Para input, prefira o controle real, não o wrapper visual.
+- Para check, prefira o checkbox, não a div do card.
+- Para confirmação assíncrona, incentive um step de espera/asserção com retry.
 
-### Opção C: Browser Extension (roadmap V2)
+### 3. Transparência de UX
 
-Extensão Chrome que captura ações e envia para a API. Melhor UX mas mais complexa de distribuir internamente.
+O usuário precisa entender que:
 
-## Gerador de seletores
+- o preview é uma imagem da sessão
+- não dá para digitar direto como em um iframe real
+- a ação escolhida define o que o clique fará
 
-O maior desafio do recorder é gerar seletores estáveis. Prioridade:
+## Limitações atuais que devem ser respeitadas
 
-1. `data-testid` (melhor — estável)
-2. `id` único
-3. `aria-label`
-4. `name` em inputs
-5. Combinação de tag + classes estáveis
-6. XPath (último recurso)
+- O preview ainda é screenshot, não stream de vídeo contínuo.
+- Teclado direto no preview é limitado.
+- Sites muito protegidos ainda podem parar em challenge.
+- O fluxo é ótimo para localhost e ambiente interno; para Cloudflare agressivo ainda pode exigir evolução.
 
-```typescript
-function generateSelector(el: HTMLElement): string {
-  if (el.dataset.testid) return `[data-testid="${el.dataset.testid}"]`
-  if (el.id) return `#${el.id}`
-  if (el.getAttribute('aria-label')) return `[aria-label="${el.getAttribute('aria-label')}"]`
-  if ((el as HTMLInputElement).name) return `[name="${(el as HTMLInputElement).name}"]`
-  // fallback
-  return el.tagName.toLowerCase()
-}
-```
+## Quando esta skill deve propor evolução
 
-## Steps capturáveis automaticamente
+Ela é a skill certa para:
 
-| Ação do usuário | Step gerado |
-|----------------|-------------|
-| Navegar para URL | `visit` |
-| Click em elemento | `click` |
-| Digitar em input | `fill` |
-| Selecionar dropdown | `select` |
-| Marcar checkbox | `check` |
+- highlight visual do alvo capturado
+- melhoria do gerador de seletores
+- novos tipos de ação compatíveis com o builder
+- presets de assertions
+- viewport configurável desktop/mobile
+- stream mais fluido da sessão
+- persistência de sessão/autenticação
 
-## Integração com o frontend
+## Regras para recorder de produto
 
-Tela de gravação:
-- Botão "Iniciar gravação" → abre browser e inicia captura
-- Lista de steps capturados em tempo real (WebSocket)
-- Botão "Parar gravação"
-- Edição inline dos steps capturados
-- Botão "Salvar como cenário"
+- Nunca ocultar quando a sessão falhou.
+- Nunca fingir que conectou se o target bloqueou.
+- Sempre devolver motivo claro quando a página não abriu.
+- Sempre priorizar step utilizável depois da gravação.
 
-## Arquitetura do recorder
+## Fluxos assíncronos dentro do recorder
 
-```
-/apps/recorder (novo app no monorepo)
-  server.ts         ← WebSocket server + proxy de browser
-  capturer.ts       ← injeta script e recebe eventos
-  normalizer.ts     ← converte eventos em steps JSON
+Não tente resolver processo assíncrono clicando repetidamente.
 
-/apps/web/src/pages/RecorderPage.tsx
-  ← conecta via WebSocket, mostra steps em tempo real
-```
+Melhor prática:
 
-## Checklist de planejamento
+1. grave a ação destrutiva uma vez
+2. adicione confirmação posterior
+3. configure retry no step de confirmação
 
-- [ ] Definir abordagem (A, B ou C)
-- [ ] Projetar protocolo WebSocket (eventos)
-- [ ] Definir estratégia de gerador de seletores
-- [ ] Planejar tela de revisão de steps gravados
-- [ ] Definir como lidar com assertions (usuário precisa adicioná-las manualmente?)
+## Checklist ao mexer no recorder
 
-## Delegação
+- a sessão cria e fecha corretamente
+- o screenshot atualiza
+- a ação correta é disparada
+- o step gravado é coerente com a intenção
+- o builder recebe e persiste o step
+- os estados de erro/bloqueio ficam claros
 
-- Implementação do servidor recorder → `playwright-engineer`
-- Tela de gravação no frontend → `frontend-architect`
-- Decisão de prioridade no roadmap → `product-strategist`
+## O que evitar
+
+- voltar ao modelo frágil de proxy como caminho principal
+- gravar seletor textual quando há `data-testid`
+- gerar steps excessivamente específicos ou barulhentos
+- esconder limitação do preview
+
+## Como delegar
+
+- Sessão Playwright, alvo e screenshots -> `playwright-engineer`
+- UX do builder e painel de gravação -> `frontend-architect`
+- Priorização de roadmap e rollout -> `product-strategist`

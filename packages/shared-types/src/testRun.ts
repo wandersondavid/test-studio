@@ -1,6 +1,8 @@
+import type { AuditActor } from './audit'
 import type { StepType } from './testStep'
 
 export type RunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'error'
+export type RunRequestedVia = 'web' | 'cli' | 'history' | 'suite'
 
 export interface StepResult {
   stepId: string
@@ -17,6 +19,9 @@ export interface TestRun {
   environmentId: string
   datasetId?: string
   status: RunStatus
+  requestedBy?: AuditActor
+  requestedVia?: RunRequestedVia
+  sourceRunId?: string
   stepResults: StepResult[]
   durationMs?: number
   videoPath?: string
@@ -30,4 +35,14 @@ export interface CreateTestRunInput {
   caseId: string
   environmentId: string
   datasetId?: string
+  requestedVia?: RunRequestedVia
+  sourceRunId?: string
+}
+
+export interface ExecuteSuiteRunsInput {
+  suiteId: string
+  environmentId: string
+  datasetId?: string
+  caseIds?: string[]
+  requestedVia?: RunRequestedVia
 }

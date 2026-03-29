@@ -1,4 +1,6 @@
-export interface Dataset {
+import type { AuditedResource } from './audit'
+
+export interface Dataset extends AuditedResource {
   _id: string
   name: string
   variables: Record<string, string>

@@ -4,14 +4,18 @@ import {
   Blocks,
   Clock3,
   Gauge,
+  LogOut,
   MonitorPlay,
   PlayCircle,
   Search,
   ServerCog,
   Sparkles,
+  Users,
 } from 'lucide-react'
+import { useAuth } from '@/auth/AuthProvider'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +37,7 @@ const PAGE_LABELS = new Map<string, string>([
   ['/suites', 'Suítes'],
   ['/run', 'Execução'],
   ['/history', 'Histórico'],
+  ['/users', 'Usuários'],
 ])
 
 function resolveCurrentLabel(pathname: string): string {
@@ -44,7 +49,11 @@ function resolveCurrentLabel(pathname: string): string {
 
 export function AppShell({ children }: AppShellProps) {
   const location = useLocation()
+  const { user, logout } = useAuth()
   const currentLabel = resolveCurrentLabel(location.pathname)
+  const navItems = user?.role === 'admin'
+    ? [...NAV_ITEMS, { to: '/users', label: 'Usuários', description: 'Acessos e permissões', icon: Users }]
+    : NAV_ITEMS
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -70,7 +79,7 @@ export function AppShell({ children }: AppShellProps) {
             <div className="space-y-3">
               <div className="page-kicker">Navegação</div>
               <nav className="grid gap-1.5">
-                {NAV_ITEMS.map(item => {
+                {navItems.map(item => {
                   const Icon = item.icon
 
                   return (
@@ -146,16 +155,31 @@ export function AppShell({ children }: AppShellProps) {
 
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">MVP ativo</Badge>
+                {user && <Badge variant="outline">{user.role}</Badge>}
                 <Badge variant="outline" className="hidden sm:inline-flex">Local-first</Badge>
                 <Badge variant="outline" className="hidden xl:inline-flex">
                   <Sparkles className="mr-1 h-3.5 w-3.5" />
                   shadcn base
                 </Badge>
+                {user && (
+                  <Button variant="ghost" size="sm" onClick={logout}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sair
+                  </Button>
+                )}
               </div>
             </div>
           </header>
 
-          <main className="min-w-0 px-5 py-6 lg:px-8">{children}</main>
+          <main className="min-w-0 px-5 py-6 lg:px-8">
+            {user && (
+              <div className="mb-5 flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{user.name}</Badge>
+                <Badge variant="outline">{user.email}</Badge>
+              </div>
+            )}
+            {children}
+          </main>
         </div>
       </div>
     </div>

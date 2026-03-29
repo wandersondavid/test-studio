@@ -14,6 +14,16 @@ Em vez de tentar abrir o alvo por proxy e injetar script no HTML, o builder:
 
 Essa abordagem resolve melhor cenários de `localhost` e reduz os problemas de `iframe`, `CSP` e `Host header`.
 
+## Autenticacao do recorder
+
+O recorder agora tambem respeita a sessao do usuario:
+
+- o frontend envia o `Bearer token` para `/runner/*`
+- o `runner` valida o JWT antes de abrir ou manipular uma sessao
+- sem login, o modo gravar nao abre sessao
+
+Isso evita que qualquer chamada solta no browser consiga controlar o Playwright sem autenticacao.
+
 ## Como funciona
 
 ### 1. Frontend
@@ -127,6 +137,8 @@ Ele já entrega o principal:
 - funciona bem em `localhost`
 - grava interações básicas
 - transforma essas interações em steps automaticamente
+- exige usuario autenticado
+- deixa rastro de autoria quando os steps sao persistidos no cenario
 
 É uma base boa para evoluir depois para:
 

@@ -1,4 +1,6 @@
-export interface TestSuite {
+import type { AuditedResource } from './audit'
+
+export interface TestSuite extends AuditedResource {
   _id: string
   name: string
   description?: string

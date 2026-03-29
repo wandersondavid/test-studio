@@ -1,4 +1,4 @@
-import type { CreateTestRunInput, RunStatus, TestRun } from '@test-studio/shared-types'
+import type { CreateTestRunInput, ExecuteSuiteRunsInput, RunStatus, TestRun } from '@test-studio/shared-types'
 import { api } from './api'
 
 export type HistoryRunFilter = 'all' | 'passed' | 'failed' | 'active'
@@ -19,16 +19,23 @@ export async function executeTestRun(input: CreateTestRunInput): Promise<TestRun
   return response.data
 }
 
-export async function retryTestRun(run: Pick<TestRun, 'caseId' | 'environmentId' | 'datasetId'>): Promise<TestRun> {
+export async function executeSuiteRuns(input: ExecuteSuiteRunsInput): Promise<{ suiteId: string; createdRuns: TestRun[] }> {
+  const response = await api.post<{ suiteId: string; createdRuns: TestRun[] }>('/test-runs/execute-suite', input)
+  return response.data
+}
+
+export async function retryTestRun(run: Pick<TestRun, '_id' | 'caseId' | 'environmentId' | 'datasetId'>): Promise<TestRun> {
   return executeTestRun({
     caseId: run.caseId,
     environmentId: run.environmentId,
     datasetId: run.datasetId,
+    requestedVia: 'history',
+    sourceRunId: run._id,
   })
 }
 
 export async function retryManyRuns(
-  runs: Array<Pick<TestRun, 'caseId' | 'environmentId' | 'datasetId'>>
+  runs: Array<Pick<TestRun, '_id' | 'caseId' | 'environmentId' | 'datasetId'>>
 ): Promise<{ created: TestRun[]; failed: string[] }> {
   const created: TestRun[] = []
   const failed: string[] = []

@@ -1,11 +1,14 @@
+import type { AuditActor, AuditedResource } from './audit'
 import type { TestStep } from './testStep'
 
-export interface TestCase {
+export interface TestCase extends AuditedResource {
   _id: string
   suiteId: string
   name: string
   description?: string
   steps: TestStep[]
+  lastRecordedBy?: AuditActor
+  lastRecordedAt?: string
   createdAt: string
   updatedAt: string
 }

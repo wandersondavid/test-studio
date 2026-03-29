@@ -1,163 +1,150 @@
 ---
 name: test-studio-runner
-description: Skill focada no runner Playwright e compilador JSON→código do Test Studio. Use para implementar execução de cenários, captura de artefatos, compilação de steps e integração entre runner e API. Acione o agent playwright-engineer para executar.
+description: Skill de execução do Test Studio. Use para evoluir o runner Playwright, o compiler JSON->Playwright, o sistema de artefatos e a comunicação com a API. Esta skill deve refletir o runner real, inclusive recorder e retry por step.
 ---
 
 # Skill: test-studio-runner
 
-Quando esta skill for acionada, você age como especialista em execução de testes do Test Studio. Seu foco é `/apps/runner` e `/packages/test-compiler`.
+Use esta skill para qualquer mudança em:
 
-## Fluxo completo de execução
+- `apps/runner`
+- `packages/test-compiler`
 
-```
-API recebe POST /test-runs/execute
-  → Cria testRun no MongoDB (status: "running")
-  → Chama runner com { runId, caseId, environmentId, datasetId }
-    → Runner busca dados na API
-    → Interpolator substitui {{variavel}} com dataset + environment.variables
-    → Compiler gera código Playwright
-    → Executor abre browser e roda steps
-    → Cada step: captura status, duração, erro, screenshot (se falhou)
-    → Artefatos salvos em /artifacts/{runId}/
-    → Runner chama PATCH /test-runs/{runId} com resultado
-  → API atualiza testRun (status: "passed" | "failed")
-```
+## O que o runner já faz hoje
 
-## Compilador: padrão de implementação
+- recebe execuções via `POST /run`
+- executa cenário em background
+- gera resultado por step
+- fala com a API
+- mantém recorder por sessão Playwright
+- expõe healthcheck
 
-```typescript
-// /packages/test-compiler/src/compiler.ts
-import type { TestStep } from '@test-studio/shared-types'
+Arquivos centrais:
 
-export function compileStep(step: TestStep): string {
-  switch (step.type) {
-    case 'visit':
-      return `await page.goto(${JSON.stringify(step.value)});`
+- `apps/runner/src/server.ts`
+- `apps/runner/src/executor.ts`
+- `apps/runner/src/artifacts.ts`
+- `apps/runner/src/api-client.ts`
+- `apps/runner/src/recorder.ts`
+- `packages/test-compiler/src/compiler.ts`
+- `packages/test-compiler/src/interpolator.ts`
 
-    case 'click':
-      return `await page.click(${JSON.stringify(step.selector)});`
+## Fluxo real de execução
 
-    case 'fill':
-      return `await page.fill(${JSON.stringify(step.selector)}, ${JSON.stringify(step.value)});`
+1. A API cria o run e chama o runner.
+2. O runner recebe `runId`, `testCase`, `environment`, `dataset`.
+3. Interpola variáveis.
+4. Compila cada step.
+5. Executa no Playwright.
+6. Coleta status, duração, erro e artefatos.
+7. Atualiza a API com o resultado final.
 
-    case 'select':
-      return `await page.selectOption(${JSON.stringify(step.selector)}, ${JSON.stringify(step.value)});`
+## Responsabilidades do compiler
 
-    case 'check':
-      return `await page.check(${JSON.stringify(step.selector)});`
+O compiler transforma `TestStep` em semântica Playwright.
 
-    case 'waitForVisible':
-      return `await page.waitForSelector(${JSON.stringify(step.selector)}, { state: 'visible' });`
+Tipos suportados:
 
-    case 'waitForURL':
-      return `await page.waitForURL(${JSON.stringify(step.value)});`
+- `visit`
+- `click`
+- `fill`
+- `select`
+- `check`
+- `waitForVisible`
+- `waitForURL`
+- `assertText`
+- `assertVisible`
 
-    case 'assertText':
-      return `await expect(page.locator(${JSON.stringify(step.selector)})).toContainText(${JSON.stringify(step.value)});`
+### Retry por step
 
-    case 'assertVisible':
-      return `await expect(page.locator(${JSON.stringify(step.selector)})).toBeVisible();`
+O compiler já precisa respeitar:
 
-    default:
-      throw new Error(`Step type desconhecido: ${(step as any).type}`)
-  }
-}
-```
+- `timeoutMs`
+- `retry.attempts`
+- `retry.intervalMs`
 
-## Interpolator: substituição de variáveis
+Semântica:
 
-```typescript
-// /packages/test-compiler/src/interpolator.ts
-export function interpolate(value: string, variables: Record<string, string>): string {
-  return value.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-    if (key in variables) return variables[key]
-    throw new Error(`Variável não encontrada: {{${key}}}`)
-  })
-}
+- cada tentativa usa o timeout do próprio step
+- entre tentativas, espera o `intervalMs`
+- na última falha, propaga erro claro
 
-export function interpolateStep(step: TestStep, variables: Record<string, string>): TestStep {
-  return {
-    ...step,
-    selector: step.selector ? interpolate(step.selector, variables) : undefined,
-    value: step.value ? interpolate(step.value, variables) : undefined,
-  }
-}
-```
+### Regra crítica
 
-## Executor: captura de resultado por step
+Retry serve para confirmação, não para repetir ação destrutiva.
 
-```typescript
-// /apps/runner/src/executor.ts
-async function executeStep(page: Page, step: TestStep, runId: string): Promise<StepResult> {
-  const start = Date.now()
-  let status: 'passed' | 'failed' = 'passed'
-  let error: string | undefined
-  let screenshotPath: string | undefined
+Bom uso:
 
-  try {
-    const code = compileStep(step)
-    await eval(`(async () => { ${code} })()`)(page) // ou função direta
-  } catch (err) {
-    status = 'failed'
-    error = String(err)
-    screenshotPath = await captureScreenshot(page, runId, step.id)
-  }
+- `waitForVisible`
+- `assertVisible`
+- `assertText`
+- `waitForURL`
 
-  return {
-    stepId: step.id,
-    type: step.type,
-    status,
-    durationMs: Date.now() - start,
-    error,
-    screenshotPath,
-  }
-}
-```
+Uso perigoso:
 
-## Configuração de browser
+- `click` em emitir
+- `click` em excluir
+- `click` em submit com efeito colateral
 
-```typescript
-// /apps/runner/src/runner.ts
-import { chromium } from 'playwright'
+## Responsabilidades do executor
 
-const browser = await chromium.launch({ headless: true })
-const context = await browser.newContext({
-  baseURL: environment.baseURL,
-  extraHTTPHeaders: environment.headers,
-  recordVideo: { dir: `./artifacts/${runId}/videos/` },
-})
-const page = await context.newPage()
+- isolar contexto por execução
+- medir duração por step
+- capturar screenshot em falha
+- fechar browser/context em `finally`
+- não deixar falha de run derrubar o processo
 
-try {
-  // executa steps
-} finally {
-  await context.close()
-  await browser.close()
-}
-```
+## Recorder dentro do runner
 
-## Artefatos
+O recorder moderno também é parte do domínio do runner.
 
-```
-/artifacts/
-  {runId}/
-    screenshots/
-      {stepId}.png
-    videos/
-      recording.webm
-    trace/
-      trace.zip
-```
+O runner é responsável por:
 
-## Checklist ao implementar
+- abrir a sessão
+- navegar
+- resolver clique por coordenada
+- gerar o step correspondente
+- devolver screenshot da sessão
 
-- [ ] Interpolação de variáveis antes da compilação
-- [ ] Browser fechado no `finally`
-- [ ] Timeout por step configurável via env
-- [ ] Screenshot automático em falha
-- [ ] Resultado postado de volta na API
-- [ ] Erros do runner não derrubam a API
+Quando o trabalho for de gravação, pense em runner e frontend juntos.
 
-## Delegação
+## Guidelines para evolução
 
-Acione o agent `playwright-engineer` para executar a implementação com código real.
+### Ao adicionar tipo de step novo
+
+1. atualize `shared-types`
+2. atualize validação/persistência na API
+3. implemente no compiler
+4. adapte o recorder, se fizer sentido
+5. exponha no builder
+
+### Ao melhorar robustez
+
+Priorize:
+
+- mensagens de erro úteis
+- seletor estável
+- redução de flakiness
+- suporte a fluxos assíncronos
+
+## Validação mínima ao mexer no runner
+
+- build do runner
+- build do compiler
+- `GET /health`
+- um run real simples
+- um cenário com falha
+- se mexeu no recorder, uma sessão criada e um screenshot retornado
+
+## O que evitar
+
+- lógica de negócio de produto dentro do compiler
+- comportamento implícito demais que o usuário não consegue entender
+- duplicar a mesma regra entre frontend e runner sem necessidade
+- retries escondidos que mascaram problema real
+
+## Como delegar
+
+- contrato, schema ou persistência -> `backend-architect`
+- UX do builder, preview e histórico -> `frontend-architect`
+- PRD, roadmap e priorização -> `product-strategist`

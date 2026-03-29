@@ -1,6 +1,8 @@
+import type { AuditedResource } from './audit'
+
 export type EnvironmentType = 'local' | 'dev' | 'hml' | 'prod'
 
-export interface Environment {
+export interface Environment extends AuditedResource {
   _id: string
   name: string
   baseURL: string

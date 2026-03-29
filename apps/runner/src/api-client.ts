@@ -1,6 +1,7 @@
 import type { StepResult, RunStatus } from '@test-studio/shared-types'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001'
+const RUNNER_SHARED_SECRET = process.env.RUNNER_SHARED_SECRET ?? 'test-studio-runner-secret'
 
 export async function postResult(
   runId: string,
@@ -14,7 +15,10 @@ export async function postResult(
 ): Promise<void> {
   const response = await fetch(`${API_URL}/test-runs/${runId}/result`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-runner-secret': RUNNER_SHARED_SECRET,
+    },
     body: JSON.stringify(result),
   })
 

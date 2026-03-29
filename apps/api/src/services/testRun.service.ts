@@ -1,5 +1,5 @@
 import { TestRun, ITestRun } from '../models/TestRun.js'
-import type { StepResult } from '@test-studio/shared-types'
+import type { AuditActor, RunRequestedVia, StepResult } from '@test-studio/shared-types'
 
 export class TestRunService {
   async findAll(): Promise<ITestRun[]> {
@@ -10,7 +10,14 @@ export class TestRunService {
     return TestRun.findById(id)
   }
 
-  async create(data: { caseId: string; environmentId: string; datasetId?: string }): Promise<ITestRun> {
+  async create(data: {
+    caseId: string
+    environmentId: string
+    datasetId?: string
+    requestedBy?: AuditActor
+    requestedVia?: RunRequestedVia
+    sourceRunId?: string
+  }): Promise<ITestRun> {
     return TestRun.create({ ...data, status: 'pending' })
   }
 

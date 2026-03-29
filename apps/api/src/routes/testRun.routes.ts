@@ -3,22 +3,26 @@ import { TestRunService } from '../services/testRun.service.js'
 import { TestCaseService } from '../services/testCase.service.js'
 import { EnvironmentService } from '../services/environment.service.js'
 import { DatasetService } from '../services/dataset.service.js'
-import { executeTestRunSchema } from '../schemas/testRun.schema.js'
+import { AuditLogService } from '../services/auditLog.service.js'
+import { executeSuiteRunsSchema, executeTestRunSchema } from '../schemas/testRun.schema.js'
+import { requireAuth, requireRunnerSecret } from '../middlewares/auth.js'
+import { getRunnerSharedSecret } from '../utils/auth.js'
 
 const runService = new TestRunService()
 const caseService = new TestCaseService()
 const envService = new EnvironmentService()
 const datasetService = new DatasetService()
+const auditLogService = new AuditLogService()
 
 export const testRunRouter = Router()
 
-testRunRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
+testRunRouter.get('/', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.json(await runService.findAll())
   } catch (err) { next(err) }
 })
 
-testRunRouter.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+testRunRouter.get('/:id', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const item = await runService.findById(req.params.id)
     if (!item) { res.status(404).json({ error: 'Não encontrado' }); return }
@@ -26,9 +30,9 @@ testRunRouter.get('/:id', async (req: Request, res: Response, next: NextFunction
   } catch (err) { next(err) }
 })
 
-testRunRouter.post('/execute', async (req: Request, res: Response, next: NextFunction) => {
+testRunRouter.post('/execute', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { caseId, environmentId, datasetId } = executeTestRunSchema.parse(req.body)
+    const { caseId, environmentId, datasetId, requestedVia, sourceRunId } = executeTestRunSchema.parse(req.body)
 
     const [testCase, environment] = await Promise.all([
       caseService.findById(caseId),
@@ -40,14 +44,24 @@ testRunRouter.post('/execute', async (req: Request, res: Response, next: NextFun
 
     const dataset = datasetId ? await datasetService.findById(datasetId) : null
 
-    const testRun = await runService.create({ caseId, environmentId, datasetId })
+    const testRun = await runService.create({
+      caseId,
+      environmentId,
+      datasetId,
+      requestedBy: req.auth!.actor,
+      requestedVia: requestedVia ?? 'web',
+      sourceRunId,
+    })
     await runService.updateStatus(testRun.id, 'running')
 
     // Dispara runner de forma assíncrona (não bloqueia a resposta)
     const runnerUrl = process.env.RUNNER_URL ?? 'http://localhost:3002'
     fetch(`${runnerUrl}/run`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-runner-secret': getRunnerSharedSecret(),
+      },
       body: JSON.stringify({
         runId: testRun.id,
         testCase,
@@ -59,12 +73,105 @@ testRunRouter.post('/execute', async (req: Request, res: Response, next: NextFun
       runService.updateStatus(testRun.id, 'error')
     })
 
+    await auditLogService.create({
+      entityType: 'run',
+      entityId: testRun.id,
+      action: 'run_requested',
+      summary: `Execução do cenário "${testCase.name}" foi solicitada.`,
+      actor: req.auth!.actor,
+      metadata: {
+        requestedVia: requestedVia ?? 'web',
+        suiteId: testCase.suiteId,
+        environmentId,
+        datasetId: datasetId ?? null,
+      },
+    })
+
     res.status(202).json(testRun)
   } catch (err) { next(err) }
 })
 
+testRunRouter.post('/execute-suite', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { suiteId, environmentId, datasetId, caseIds, requestedVia } = executeSuiteRunsSchema.parse(req.body)
+
+    const [environment, suiteCases] = await Promise.all([
+      envService.findById(environmentId),
+      caseService.findAll(suiteId),
+    ])
+
+    if (!environment) {
+      res.status(404).json({ error: 'Ambiente não encontrado' })
+      return
+    }
+
+    const dataset = datasetId ? await datasetService.findById(datasetId) : null
+    const targetCases = caseIds?.length
+      ? suiteCases.filter(testCase => caseIds.includes(testCase.id))
+      : suiteCases
+
+    if (targetCases.length === 0) {
+      res.status(404).json({ error: 'Nenhum cenário encontrado para a suíte selecionada.' })
+      return
+    }
+
+    const runnerUrl = process.env.RUNNER_URL ?? 'http://localhost:3002'
+    const createdRuns = []
+
+    for (const testCase of targetCases) {
+      const testRun = await runService.create({
+        caseId: testCase.id,
+        environmentId,
+        datasetId,
+        requestedBy: req.auth!.actor,
+        requestedVia: requestedVia ?? 'suite',
+      })
+
+      createdRuns.push(testRun)
+      await runService.updateStatus(testRun.id, 'running')
+
+      fetch(`${runnerUrl}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-runner-secret': getRunnerSharedSecret(),
+        },
+        body: JSON.stringify({
+          runId: testRun.id,
+          testCase,
+          environment,
+          dataset,
+        }),
+      }).catch(err => {
+        console.error('Erro ao chamar runner:', err)
+        runService.updateStatus(testRun.id, 'error')
+      })
+
+      await auditLogService.create({
+        entityType: 'run',
+        entityId: testRun.id,
+        action: 'suite_run_requested',
+        summary: `Execução da suíte disparou o cenário "${testCase.name}".`,
+        actor: req.auth!.actor,
+        metadata: {
+          suiteId,
+          environmentId,
+          datasetId: datasetId ?? null,
+        },
+      })
+    }
+
+    res.status(202).json({
+      suiteId,
+      createdRuns,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 // Chamado pelo runner ao finalizar
-testRunRouter.patch('/:id/result', async (req: Request, res: Response, next: NextFunction) => {
+testRunRouter.patch('/:id/result', requireRunnerSecret, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const updated = await runService.updateResult(req.params.id, req.body)
     if (!updated) { res.status(404).json({ error: 'Não encontrado' }); return }

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../services/api'
-import type { Environment, StepRetryConfig, TestCase, TestStep, StepType } from '@test-studio/shared-types'
+import type { AuditEntry, Environment, ReusableBlock, StepRetryConfig, TestCase, TestStep, StepType } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { getAuthToken } from '../services/session'
 
 type RecorderAction = 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
 
@@ -32,6 +33,13 @@ interface StepTimingDraft {
   timeoutSeconds: string
   retryAttempts: string
   retryIntervalSeconds: string
+}
+
+interface RetryPreset {
+  key: string
+  label: string
+  description: string
+  draft: StepTimingDraft
 }
 
 const STEP_TYPES: StepType[] = [
@@ -75,6 +83,27 @@ const RECORDER_ACTION_LABELS: Record<RecorderAction, string> = {
   assertVisible: 'Assert visível',
   assertText: 'Assert texto',
 }
+
+const RETRY_PRESETS: RetryPreset[] = [
+  {
+    key: 'fast',
+    label: 'Assíncrono leve',
+    description: '4 tentativas a cada 2s com timeout de 2s.',
+    draft: { timeoutSeconds: '2', retryAttempts: '4', retryIntervalSeconds: '2' },
+  },
+  {
+    key: 'rabbit',
+    label: 'Rabbit padrão',
+    description: '10 tentativas a cada 10s com timeout de 3s.',
+    draft: { timeoutSeconds: '3', retryAttempts: '10', retryIntervalSeconds: '10' },
+  },
+  {
+    key: 'slow',
+    label: 'Processo demorado',
+    description: '12 tentativas a cada 20s com timeout de 5s.',
+    draft: { timeoutSeconds: '5', retryAttempts: '12', retryIntervalSeconds: '20' },
+  },
+]
 
 function stepNeedsSelector(type: StepType): boolean {
   return !['visit', 'waitForURL'].includes(type)
@@ -223,10 +252,12 @@ function describeStepTiming(step: TestStep): string {
 }
 
 async function runnerRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAuthToken()
   const response = await fetch(`/runner${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   })
@@ -266,6 +297,12 @@ export function CaseBuilderPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingStepId, setEditingStepId] = useState<string | null>(null)
   const [editingTiming, setEditingTiming] = useState<StepTimingDraft>(() => buildTimingDraft())
+  const [reusableBlocks, setReusableBlocks] = useState<ReusableBlock[]>([])
+  const [loadingBlocks, setLoadingBlocks] = useState(true)
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
+  const [loadingAudit, setLoadingAudit] = useState(true)
+  const [blockForm, setBlockForm] = useState({ name: '', description: '' })
+  const [savingBlock, setSavingBlock] = useState(false)
 
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [showRecorder, setShowRecorder] = useState(false)
@@ -276,6 +313,9 @@ export function CaseBuilderPage() {
   const [recorderSessionId, setRecorderSessionId] = useState<string | null>(null)
   const [recorderViewport, setRecorderViewport] = useState<RecorderViewport | null>(null)
   const [screenshotVersion, setScreenshotVersion] = useState(0)
+  const [recorderScreenshotUrl, setRecorderScreenshotUrl] = useState<string | null>(null)
+  const [loadingRecorderScreenshot, setLoadingRecorderScreenshot] = useState(false)
+  const [recorderPreviewError, setRecorderPreviewError] = useState<string | null>(null)
   const [recorderAction, setRecorderAction] = useState<RecorderAction>('click')
   const [recorderActionValue, setRecorderActionValue] = useState('')
   const [recorderStatus, setRecorderStatus] = useState('Pronto para iniciar.')
@@ -286,6 +326,19 @@ export function CaseBuilderPage() {
   const stepsRef = useRef<TestStep[]>([])
   const previewImageRef = useRef<HTMLImageElement | null>(null)
   const recorderSessionRef = useRef<string | null>(null)
+  const recorderScreenshotUrlRef = useRef<string | null>(null)
+
+  function revokeRecorderScreenshotUrl() {
+    if (recorderScreenshotUrlRef.current) {
+      URL.revokeObjectURL(recorderScreenshotUrlRef.current)
+      recorderScreenshotUrlRef.current = null
+    }
+  }
+
+  function resetRecorderScreenshot() {
+    revokeRecorderScreenshotUrl()
+    setRecorderScreenshotUrl(null)
+  }
 
   useEffect(() => {
     stepsRef.current = steps
@@ -294,6 +347,12 @@ export function CaseBuilderPage() {
   useEffect(() => {
     recorderSessionRef.current = recorderSessionId
   }, [recorderSessionId])
+
+  useEffect(() => {
+    return () => {
+      revokeRecorderScreenshotUrl()
+    }
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -322,14 +381,125 @@ export function CaseBuilderPage() {
       .finally(() => setLoadingEnvironments(false))
   }, [])
 
+  async function loadReusableBlocks() {
+    setLoadingBlocks(true)
+    try {
+      const response = await api.get<ReusableBlock[]>('/reusable-blocks')
+      setReusableBlocks(response.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar blocos reutilizáveis.')
+    } finally {
+      setLoadingBlocks(false)
+    }
+  }
+
+  async function loadAuditLogs() {
+    setLoadingAudit(true)
+    try {
+      const response = await api.get<AuditEntry[]>('/audit-logs', {
+        params: {
+          entityType: 'case',
+          entityId: id,
+          limit: 15,
+        },
+      })
+      setAuditLogs(response.data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar trilha de auditoria do cenário.')
+    } finally {
+      setLoadingAudit(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadReusableBlocks()
+    void loadAuditLogs()
+  }, [id])
+
   useEffect(() => {
     return () => {
       const sessionId = recorderSessionRef.current
+      revokeRecorderScreenshotUrl()
       if (sessionId) {
         void runnerRequest(`/recorder/sessions/${sessionId}`, { method: 'DELETE' })
       }
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!recorderSessionId) {
+      resetRecorderScreenshot()
+      setLoadingRecorderScreenshot(false)
+      setRecorderPreviewError(null)
+      return
+    }
+
+    const token = getAuthToken()
+
+    if (!token) {
+      resetRecorderScreenshot()
+      setLoadingRecorderScreenshot(false)
+      setRecorderPreviewError('Sua sessão expirou. Faça login novamente para continuar usando o recorder.')
+      return
+    }
+
+    setLoadingRecorderScreenshot(true)
+    setRecorderPreviewError(null)
+
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/runner/recorder/sessions/${recorderSessionId}/screenshot?ts=${screenshotVersion}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            cache: 'no-store',
+          }
+        )
+
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 403) {
+            throw new Error('Sua sessão expirou ou o recorder perdeu a autenticação. Faça login novamente ou reinicie a sessão.')
+          }
+
+          throw new Error('Não foi possível carregar o screenshot do recorder. Atualize a sessão e tente novamente.')
+        }
+
+        const blob = await response.blob()
+        if (cancelled) return
+
+        const nextUrl = URL.createObjectURL(blob)
+        const previousUrl = recorderScreenshotUrlRef.current
+        recorderScreenshotUrlRef.current = nextUrl
+        setRecorderScreenshotUrl(nextUrl)
+        setRecorderPreviewError(null)
+
+        if (previousUrl) {
+          URL.revokeObjectURL(previousUrl)
+        }
+      } catch (err: unknown) {
+        if (cancelled) return
+
+        resetRecorderScreenshot()
+        setRecorderPreviewError(
+          err instanceof Error
+            ? err.message
+            : 'Não foi possível carregar o screenshot do recorder. Atualize a sessão e tente novamente.'
+        )
+      } finally {
+        if (!cancelled) {
+          setLoadingRecorderScreenshot(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [recorderSessionId, screenshotVersion])
 
   async function saveSteps(nextSteps: TestStep[]) {
     setSaving(true)
@@ -338,6 +508,7 @@ export function CaseBuilderPage() {
     try {
       const response = await api.put<TestCase>(`/test-cases/${id}`, { steps: nextSteps })
       setTestCase(current => current ? { ...current, ...response.data, steps: response.data.steps ?? nextSteps } : current)
+      await loadAuditLogs()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar steps')
     } finally {
@@ -401,9 +572,53 @@ export function CaseBuilderPage() {
     setShowAddForm(false)
   }
 
+  function applyTimingPreset(target: 'new' | 'edit', preset: RetryPreset) {
+    if (target === 'new') {
+      setNewStepTiming({ ...preset.draft })
+      return
+    }
+
+    setEditingTiming({ ...preset.draft })
+  }
+
   function handleRemoveStep(stepId: string) {
     if (!confirm('Remover este step?')) return
     replaceSteps(stepsRef.current.filter(step => step.id !== stepId))
+  }
+
+  async function handleCreateReusableBlock() {
+    if (steps.length === 0) {
+      setError('Adicione pelo menos um step antes de salvar um bloco reutilizável.')
+      return
+    }
+
+    if (!blockForm.name.trim()) {
+      setError('Informe um nome para o bloco reutilizável.')
+      return
+    }
+
+    setSavingBlock(true)
+    setError(null)
+
+    try {
+      await api.post('/reusable-blocks', {
+        name: blockForm.name.trim(),
+        description: blockForm.description.trim() || undefined,
+        steps,
+      })
+
+      setBlockForm({ name: '', description: '' })
+      await loadReusableBlocks()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar bloco reutilizável.')
+    } finally {
+      setSavingBlock(false)
+    }
+  }
+
+  function handleInsertReusableBlock(block: ReusableBlock) {
+    const clonedSteps = block.steps.map(step => ({ ...step, id: crypto.randomUUID() }))
+    appendSteps(clonedSteps)
   }
 
   function moveStep(index: number, direction: number) {
@@ -455,6 +670,7 @@ export function CaseBuilderPage() {
     setRecorderViewport(session.viewport)
     setCurrentPreviewUrl(session.currentUrl)
     setPageTitle(session.title)
+    setRecorderPreviewError(null)
     setScreenshotVersion(version => version + 1)
   }
 
@@ -519,6 +735,8 @@ export function CaseBuilderPage() {
       recorderSessionRef.current = null
       setRecorderActive(false)
       setRecorderViewport(null)
+      setRecorderPreviewError(null)
+      resetRecorderScreenshot()
       setRecorderStatus('Gravador pausado.')
       setRecorderBusy(false)
     }
@@ -625,9 +843,6 @@ export function CaseBuilderPage() {
   if (!testCase) return <div className="empty-state" data-testid="not-found">Cenário não encontrado</div>
 
   const selectedEnvironment = environments.find(environment => environment._id === recorderEnvironmentId)
-  const recorderPreviewSrc = recorderSessionId
-    ? `/runner/recorder/sessions/${recorderSessionId}/screenshot?ts=${screenshotVersion}`
-    : null
 
   return (
     <div data-testid="case-builder-page" className="page-shell">
@@ -807,16 +1022,24 @@ export function CaseBuilderPage() {
               </div>
 
               <div className="recorder-preview">
-                {recorderPreviewSrc ? (
+                {recorderScreenshotUrl ? (
                   <img
                     ref={previewImageRef}
-                    src={recorderPreviewSrc}
+                    src={recorderScreenshotUrl}
                     alt="Preview da sessão Playwright"
                     data-testid="recorder-preview-image"
                     onClick={handlePreviewClick}
-                    onError={() => setError('Não foi possível carregar o screenshot do recorder. Atualize a sessão e tente novamente.')}
                     style={{ cursor: recorderBusy ? 'progress' : 'crosshair', userSelect: 'none' }}
                   />
+                ) : recorderSessionId ? (
+                  <div className="empty-state">
+                    <p style={{ fontSize: 18, marginBottom: 8 }}>
+                      {loadingRecorderScreenshot ? 'Carregando screenshot da sessão...' : 'Preview indisponível no momento.'}
+                    </p>
+                    <p style={{ margin: 0, maxWidth: 540 }}>
+                      {recorderPreviewError ?? 'A sessão está ativa, mas o screenshot ainda está sendo gerado pelo runner.'}
+                    </p>
+                  </div>
                 ) : (
                   <div className="empty-state">
                     <p style={{ fontSize: 18, marginBottom: 8 }}>Nenhuma sessão ativa.</p>
@@ -944,12 +1167,25 @@ export function CaseBuilderPage() {
                       </label>
                     </div>
 
-                    <div className="mt-3 text-sm text-muted-foreground">
-                      Exemplo: 10 tentativas com intervalo de 10 segundos criam uma janela longa de polling,
-                      somada ao timeout configurado em cada tentativa.
-                    </div>
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    Exemplo: 10 tentativas com intervalo de 10 segundos criam uma janela longa de polling,
+                    somada ao timeout configurado em cada tentativa.
+                  </div>
 
-                    <div className="form-actions" style={{ marginTop: 16 }}>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {RETRY_PRESETS.map(preset => (
+                      <Button
+                        key={preset.key}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => applyTimingPreset('edit', preset)}
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="form-actions" style={{ marginTop: 16 }}>
                       <Button
                         size="sm"
                         data-testid={`btn-save-config-${step.id}`}
@@ -1065,6 +1301,19 @@ export function CaseBuilderPage() {
                 Exemplo: 10 tentativas, intervalo 10s, timeout 3s por tentativa.
               </div>
 
+              <div className="flex flex-wrap gap-2">
+                {RETRY_PRESETS.map(preset => (
+                  <Button
+                    key={preset.key}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => applyTimingPreset('new', preset)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+
               <div className="form-actions">
                 <Button data-testid="btn-confirm-add-step" onClick={handleAddManualStep}>
                   Adicionar
@@ -1081,6 +1330,101 @@ export function CaseBuilderPage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_420px]">
+        <Card className="bg-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-['Space_Grotesk'] text-2xl">Blocos reutilizáveis</CardTitle>
+            <CardDescription>Salve conjuntos de steps e reaplique em outros cenários sem regravar tudo.</CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-5">
+            <div className="field-grid">
+              <label className="field">
+                <span className="field-label">Nome do bloco</span>
+                <input
+                  value={blockForm.name}
+                  onChange={event => setBlockForm(current => ({ ...current, name: event.target.value }))}
+                  placeholder="Ex: Login base"
+                />
+              </label>
+              <label className="field">
+                <span className="field-label">Descrição</span>
+                <input
+                  value={blockForm.description}
+                  onChange={event => setBlockForm(current => ({ ...current, description: event.target.value }))}
+                  placeholder="Passos reutilizados em vários fluxos"
+                />
+              </label>
+            </div>
+
+            <div className="form-actions">
+              <Button onClick={handleCreateReusableBlock} disabled={savingBlock || steps.length === 0}>
+                {savingBlock ? 'Salvando bloco...' : 'Salvar steps atuais como bloco'}
+              </Button>
+            </div>
+
+            {loadingBlocks ? (
+              <div className="loading-state">Carregando blocos...</div>
+            ) : reusableBlocks.length === 0 ? (
+              <div className="empty-state">Nenhum bloco salvo ainda.</div>
+            ) : (
+              <div className="space-y-3">
+                {reusableBlocks.map(block => (
+                  <div key={block._id} className="rounded-xl border border-border/70 bg-background/60 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">{block.name}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {block.description || 'Sem descrição'} • {block.steps.length} steps
+                        </div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => handleInsertReusableBlock(block)}>
+                        Inserir no cenário
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card/70">
+          <CardHeader className="pb-2">
+            <CardTitle className="font-['Space_Grotesk'] text-2xl">Audit trail</CardTitle>
+            <CardDescription>Veja quem gravou, ajustou ou removeu steps deste cenário.</CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            {loadingAudit ? (
+              <div className="loading-state">Carregando atividades...</div>
+            ) : auditLogs.length === 0 ? (
+              <div className="empty-state">Nenhuma atividade registrada ainda.</div>
+            ) : (
+              <div className="space-y-3">
+                {auditLogs.map(entry => (
+                  <div key={entry._id} className="rounded-xl border border-border/70 bg-background/60 p-4">
+                    <div className="text-sm font-semibold">{entry.summary}</div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {entry.actor.name} • {entry.actor.email}
+                    </div>
+                    {entry.metadata && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {Object.entries(entry.metadata).map(([key, value]) => (
+                          <Badge key={key} variant="outline">
+                            {key}: {String(value)}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

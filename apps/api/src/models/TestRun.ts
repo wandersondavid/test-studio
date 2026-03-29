@@ -1,11 +1,15 @@
 import { Schema, model, Document } from 'mongoose'
-import type { RunStatus, StepResult } from '@test-studio/shared-types'
+import type { RunStatus, StepResult, AuditActor, RunRequestedVia } from '@test-studio/shared-types'
+import { AuditActorSchema } from './shared.js'
 
 export interface ITestRun extends Document {
   caseId: string
   environmentId: string
   datasetId?: string
   status: RunStatus
+  requestedBy?: AuditActor
+  requestedVia?: RunRequestedVia
+  sourceRunId?: string
   stepResults: StepResult[]
   durationMs?: number
   videoPath?: string
@@ -27,6 +31,9 @@ const TestRunSchema = new Schema<ITestRun>({
   environmentId: { type: String, required: true },
   datasetId: { type: String },
   status: { type: String, enum: ['pending', 'running', 'passed', 'failed', 'error'], default: 'pending' },
+  requestedBy: { type: AuditActorSchema },
+  requestedVia: { type: String, enum: ['web', 'cli', 'history', 'suite'] },
+  sourceRunId: { type: String },
   stepResults: { type: [StepResultSchema], default: [] },
   durationMs: { type: Number },
   videoPath: { type: String },

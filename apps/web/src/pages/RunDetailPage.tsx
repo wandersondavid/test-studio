@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../services/api'
-import type { TestRun, StepResult } from '@test-studio/shared-types'
+import type { AuditEntry, TestRun, StepResult } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { Badge } from '../components/ui/badge'
@@ -16,6 +16,7 @@ export function RunDetailPage() {
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
 
   useEffect(() => {
     function poll() {
@@ -28,6 +29,16 @@ export function RunDetailPage() {
       })
     }
     poll()
+  }, [id])
+
+  useEffect(() => {
+    api.get<AuditEntry[]>('/audit-logs', {
+      params: {
+        entityType: 'run',
+        entityId: id,
+        limit: 10,
+      },
+    }).then(res => setAuditLogs(res.data)).catch(() => undefined)
   }, [id])
 
   if (loading) return <div className="loading-state" data-testid="loading">Carregando...</div>
@@ -44,6 +55,7 @@ export function RunDetailPage() {
 
     try {
       const nextRun = await retryTestRun({
+        _id: run._id,
         caseId: run.caseId,
         environmentId: run.environmentId,
         datasetId: run.datasetId,
@@ -79,6 +91,7 @@ export function RunDetailPage() {
           <>
             <StatusBadge status={run.status} />
             <Badge variant="outline">{run.stepResults.length} steps processados</Badge>
+            {run.requestedVia && <Badge variant="outline">via {run.requestedVia}</Badge>}
           </>
         }
       />
@@ -103,6 +116,11 @@ export function RunDetailPage() {
           <span className="stat-label">Falhas</span>
           <strong className="stat-value">{failedSteps}</strong>
           <span className="stat-note">Steps com erro ou timeout</span>
+        </article>
+        <article className="stat-card">
+          <span className="stat-label">Solicitado por</span>
+          <strong className="stat-value">{run.requestedBy?.name ?? 'Sistema'}</strong>
+          <span className="stat-note">{run.requestedBy?.email ?? 'Execução interna'}</span>
         </article>
       </section>
 
@@ -150,6 +168,30 @@ export function RunDetailPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </section>
+
+      <section className="surface">
+        <div className="section-heading">
+          <div>
+            <h2>Audit trail</h2>
+            <p>Mostra quem solicitou ou reenfileirou esta execução.</p>
+          </div>
+        </div>
+
+        {auditLogs.length === 0 ? (
+          <div className="empty-state">Nenhum evento de auditoria encontrado para este run.</div>
+        ) : (
+          <div className="space-y-3">
+            {auditLogs.map(entry => (
+              <div key={entry._id} className="rounded-xl border border-border/70 bg-background/60 p-4">
+                <div className="text-sm font-semibold">{entry.summary}</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {entry.actor.name} • {entry.actor.email}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>

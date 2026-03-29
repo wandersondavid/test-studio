@@ -1,24 +1,37 @@
 #!/usr/bin/env node
 
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
 const API_BASE_URL = process.env.TEST_STUDIO_API_URL ?? 'http://localhost:3001'
 const DEFAULT_POLL_INTERVAL_MS = 2000
+const SESSION_FILE = path.join(os.homedir(), '.test-studio-cli-session.json')
 
 function printHelp() {
   console.log(`
 Test Studio CLI
 
 Uso:
+  npm run test-studio -- login --email "admin@teststudio.local" --password "admin123456"
+  npm run test-studio -- me
+  npm run test-studio -- logout
   npm run test-studio -- list cases
+  npm run test-studio -- list suites
   npm run test-studio -- list environments
   npm run test-studio -- list datasets
   npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN"
+  npm run test-studio -- run --environment "LOCAL DEV" --suite "Fluxo de Login"
   npm run test-studio -- run --environment "LOCAL DEV" --all
   npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --wait
   npm run test-studio -- watch --run 69c98087358333cb542439c5
 
 Opções:
+  --email             Email para login
+  --password          Senha para login
   --environment, -e   Nome ou id do ambiente
   --case, -c          Nome ou id do cenário
+  --suite, -s         Nome ou id da suíte
   --dataset, -d       Nome ou id do dataset
   --run, -r           Id do run a acompanhar
   --all               Executa todos os cenários encontrados
@@ -27,7 +40,9 @@ Opções:
   --api               Sobrescreve a URL da API (default: http://localhost:3001)
 
 Exemplos:
+  npm run test-studio -- login --email admin@teststudio.local --password admin123456
   npm run test-studio -- run -e "LOCAL DEV" -c "LOGIN"
+  npm run test-studio -- run -e "LOCAL DEV" -s "Fluxo de Login" --wait
   npm run test-studio -- run -e "LOCAL DEV" --all --wait
   npm run test-studio -- watch --run 69c98087358333cb542439c5
   TEST_STUDIO_API_URL=http://localhost:3001 npm run test-studio -- list cases
@@ -59,10 +74,13 @@ function parseFlags(args) {
 
     if (current === '--environment' || current === '-e') flags.environment = nextValue
     if (current === '--case' || current === '-c') flags.case = nextValue
+    if (current === '--suite' || current === '-s') flags.suite = nextValue
     if (current === '--dataset' || current === '-d') flags.dataset = nextValue
     if (current === '--api') flags.api = nextValue
     if (current === '--run' || current === '-r') flags.run = nextValue
     if (current === '--interval') flags.interval = Number(nextValue)
+    if (current === '--email') flags.email = nextValue
+    if (current === '--password') flags.password = nextValue
 
     index += 1
   }
@@ -70,13 +88,37 @@ function parseFlags(args) {
   return flags
 }
 
+async function readStoredSession() {
+  try {
+    return JSON.parse(await fs.readFile(SESSION_FILE, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+async function writeStoredSession(session) {
+  await fs.writeFile(SESSION_FILE, JSON.stringify(session, null, 2))
+}
+
+async function clearStoredSession() {
+  await fs.rm(SESSION_FILE, { force: true })
+}
+
 async function request(path, init = {}, apiBaseUrl = API_BASE_URL) {
+  const storedSession = await readStoredSession()
+  const authToken = process.env.TEST_STUDIO_TOKEN ?? storedSession?.token
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(init.headers ?? {}),
+  }
+
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
+    headers,
   })
 
   const text = await response.text()
@@ -249,7 +291,46 @@ async function listResources(resource, apiBaseUrl) {
     return
   }
 
-  throw new Error(`Recurso "${resource}" não suportado. Use cases, environments ou datasets.`)
+  if (resource === 'suites') {
+    const suites = await request('/test-suites', {}, apiBaseUrl)
+    console.table(suites.map(item => ({
+      id: item._id,
+      name: item.name,
+      description: item.description ?? '-',
+    })))
+    return
+  }
+
+  throw new Error(`Recurso "${resource}" não suportado. Use cases, suites, environments ou datasets.`)
+}
+
+async function loginCommand(flags) {
+  const apiBaseUrl = flags.api ?? API_BASE_URL
+  if (!flags.email || !flags.password) {
+    throw new Error('Informe --email e --password para fazer login.')
+  }
+
+  const session = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: flags.email,
+      password: flags.password,
+    }),
+  }, apiBaseUrl)
+
+  await writeStoredSession(session)
+  console.log(`Sessão salva para ${session.user.email}.`)
+}
+
+async function logoutCommand() {
+  await clearStoredSession()
+  console.log('Sessão do CLI removida.')
+}
+
+async function meCommand(flags) {
+  const apiBaseUrl = flags.api ?? API_BASE_URL
+  const response = await request('/auth/me', {}, apiBaseUrl)
+  console.table([response.user])
 }
 
 async function runScenarios(flags) {
@@ -260,21 +341,70 @@ async function runScenarios(flags) {
     throw new Error('Informe um ambiente com --environment.')
   }
 
-  if (!flags.all && !flags.case) {
-    throw new Error('Use --all para rodar todos os cenários ou informe um cenário com --case.')
+  if (!flags.all && !flags.case && !flags.suite) {
+    throw new Error('Use --all, informe um cenário com --case ou uma suíte com --suite.')
   }
 
-  const [cases, environments, datasets] = await Promise.all([
+  const [cases, suites, environments, datasets] = await Promise.all([
     request('/test-cases', {}, apiBaseUrl),
+    request('/test-suites', {}, apiBaseUrl),
     request('/environments', {}, apiBaseUrl),
     request('/datasets', {}, apiBaseUrl),
   ])
 
   const environment = resolveByIdOrName(environments, flags.environment, 'Ambiente')
   const dataset = flags.dataset ? resolveByIdOrName(datasets, flags.dataset, 'Dataset') : null
-  const targetCases = flags.all
-    ? cases
-    : [resolveByIdOrName(cases, flags.case, 'Cenário')]
+  const targetSuite = flags.suite ? resolveByIdOrName(suites, flags.suite, 'Suíte') : null
+
+  if (flags.suite) {
+    const suiteResult = await request(
+      '/test-runs/execute-suite',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          suiteId: targetSuite._id,
+          environmentId: environment._id,
+          datasetId: dataset?._id,
+          requestedVia: 'suite',
+        }),
+      },
+      apiBaseUrl
+    )
+
+    console.log(`API: ${apiBaseUrl}`)
+    console.log(`Ambiente: ${environment.name} (${environment.type}) -> ${environment.baseURL}`)
+    console.log(`Suíte: ${targetSuite.name}`)
+    if (dataset) console.log(`Dataset: ${dataset.name}`)
+    console.log(`Cenários na fila: ${suiteResult.createdRuns.length}`)
+    console.log('')
+
+    for (const createdRun of suiteResult.createdRuns) {
+      const runCase = cases.find(item => item._id === createdRun.caseId)
+      console.log(`Enfileirado: ${runCase?.name ?? createdRun.caseId} -> run ${createdRun._id}`)
+    }
+
+    console.log('')
+    console.log(`Total enfileirado: ${suiteResult.createdRuns.length}`)
+
+    if (flags.wait) {
+      console.log('')
+      await watchRuns(
+        suiteResult.createdRuns.map(run => run._id),
+        {
+          apiBaseUrl,
+          intervalMs,
+          context: {
+            caseNameById: new Map(cases.map(item => [item._id, item.name])),
+            environmentLabelById: new Map(environments.map(item => [item._id, `${item.name} (${item.type})`])),
+          },
+        }
+      )
+    }
+
+    return
+  }
+
+  const targetCases = flags.all ? cases : [resolveByIdOrName(cases, flags.case, 'Cenário')]
 
   if (targetCases.length === 0) {
     throw new Error('Nenhum cenário encontrado para executar.')
@@ -297,6 +427,7 @@ async function runScenarios(flags) {
           caseId: testCase._id,
           environmentId: environment._id,
           datasetId: dataset?._id,
+          requestedVia: 'cli',
         }),
       },
       apiBaseUrl
@@ -344,6 +475,23 @@ async function main() {
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {
     printHelp()
+    return
+  }
+
+  if (command === 'login') {
+    const flags = parseFlags(args.slice(1))
+    await loginCommand(flags)
+    return
+  }
+
+  if (command === 'logout') {
+    await logoutCommand()
+    return
+  }
+
+  if (command === 'me') {
+    const flags = parseFlags(args.slice(1))
+    await meCommand(flags)
     return
   }
 

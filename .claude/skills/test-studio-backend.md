@@ -1,150 +1,153 @@
 ---
 name: test-studio-backend
-description: Skill focada em construir e evoluir o backend do Test Studio. Use para criar endpoints, models, services e lógica de negócio em /apps/api. Acione o agent backend-architect ao final para executar a implementação.
+description: Skill de backend do Test Studio. Use para evoluir a API Express, modelos Mongoose, schemas Zod e orquestração de execuções e retestes. Esta skill deve seguir o código real de `apps/api`, não uma arquitetura hipotética.
 ---
 
 # Skill: test-studio-backend
 
-Quando esta skill for acionada, você age como especialista de backend do Test Studio. Planeje e implemente tudo dentro de `/apps/api`.
+Use esta skill para qualquer mudança em `apps/api`.
 
-## Stack obrigatória
+## Escopo real
+
+O backend atual já cobre:
+
+- CRUD de ambientes
+- CRUD de suítes
+- CRUD de cenários
+- CRUD de datasets
+- criação de test runs
+- listagem e detalhe de runs
+- patch de resultado vindo do runner
+- proxy legado de recorder na API
+
+Arquivos centrais:
+
+- `apps/api/src/server.ts`
+- `apps/api/src/routes/*.routes.ts`
+- `apps/api/src/services/*.service.ts`
+- `apps/api/src/models/*.ts`
+- `apps/api/src/schemas/*.schema.ts`
+
+## Stack e padrões obrigatórios
 
 - Node.js + TypeScript
-- Express.js (rotas e middlewares)
-- Mongoose (ODM para MongoDB)
-- Zod (validação de entrada)
-- dotenv (variáveis de ambiente)
+- Express
+- Mongoose
+- Zod
+- `dotenv/config`
 
-## Padrão de implementação
+### Regras
 
-### 1. Model (Mongoose)
+1. Entrada sempre validada com Zod.
+2. Persistência sempre via model/service.
+3. Sem lógica de negócio pesada dentro de rota.
+4. Erro propagado por `next(err)` quando fizer sentido.
+5. Qualquer shape usado fora da API precisa estar em `packages/shared-types`.
 
-```typescript
-// /apps/api/src/models/Environment.ts
-import { Schema, model, Document } from 'mongoose'
+## Contratos atuais importantes
 
-export interface IEnvironment extends Document {
-  name: string
-  baseURL: string
-  type: 'local' | 'dev' | 'hml' | 'prod'
-  headers: Record<string, string>
-  variables: Record<string, string>
-  createdAt: Date
-  updatedAt: Date
-}
+### Execução
 
-const EnvironmentSchema = new Schema<IEnvironment>({
-  name: { type: String, required: true },
-  baseURL: { type: String, required: true },
-  type: { type: String, enum: ['local', 'dev', 'hml', 'prod'], required: true },
-  headers: { type: Map, of: String, default: {} },
-  variables: { type: Map, of: String, default: {} },
-}, { timestamps: true })
+`POST /test-runs/execute`
 
-export const Environment = model<IEnvironment>('Environment', EnvironmentSchema)
-```
+- recebe `caseId`, `environmentId`, `datasetId`
+- busca cenário e ambiente
+- cria `testRun`
+- marca como `running`
+- dispara o runner em background
 
-### 2. Schema de validação (Zod)
+`PATCH /test-runs/:id/result`
 
-```typescript
-// /apps/api/src/schemas/environment.schema.ts
-import { z } from 'zod'
+- recebe resultado final do runner
+- persiste:
+  - status
+  - stepResults
+  - durationMs
+  - videoPath
+  - tracePath
+  - error
 
-export const createEnvironmentSchema = z.object({
-  name: z.string().min(1),
-  baseURL: z.string().url(),
-  type: z.enum(['local', 'dev', 'hml', 'prod']),
-  headers: z.record(z.string()).optional().default({}),
-  variables: z.record(z.string()).optional().default({}),
-})
-```
+### Recorder
 
-### 3. Controller
+A API ainda expõe `/recorder`, mas o recorder moderno roda no runner. Qualquer evolução nova deve tratar a API como camada de suporte e não duplicar o estado da sessão aqui.
 
-```typescript
-// /apps/api/src/controllers/environment.controller.ts
-import { Request, Response, NextFunction } from 'express'
-import { EnvironmentService } from '../services/environment.service'
-import { createEnvironmentSchema } from '../schemas/environment.schema'
+## Entidades que você precisa respeitar
 
-export class EnvironmentController {
-  constructor(private service: EnvironmentService) {}
+- `Environment`
+- `TestSuite`
+- `TestCase`
+- `Dataset`
+- `TestRun`
 
-  list = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const items = await this.service.findAll()
-      res.json(items)
-    } catch (err) {
-      next(err)
-    }
-  }
+### Detalhe importante do cenário
 
-  create = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const data = createEnvironmentSchema.parse(req.body)
-      const item = await this.service.create(data)
-      res.status(201).json(item)
-    } catch (err) {
-      next(err)
-    }
-  }
-}
-```
+`TestStep` já suporta retry dinâmico:
 
-### 4. Service
+- `timeoutMs`
+- `retry.attempts`
+- `retry.intervalMs`
 
-```typescript
-// /apps/api/src/services/environment.service.ts
-import { Environment, IEnvironment } from '../models/Environment'
+Quando adicionar qualquer campo novo ao step:
 
-export class EnvironmentService {
-  async findAll(): Promise<IEnvironment[]> {
-    return Environment.find().sort({ createdAt: -1 })
-  }
+1. atualize `packages/shared-types`
+2. atualize schema Zod da API
+3. atualize model Mongoose
+4. garanta compatibilidade com o runner/compiler
 
-  async create(data: Partial<IEnvironment>): Promise<IEnvironment> {
-    return Environment.create(data)
-  }
+## Como implementar endpoint novo sem quebrar o produto
 
-  async findById(id: string): Promise<IEnvironment | null> {
-    return Environment.findById(id)
-  }
+1. Defina ou atualize o contrato em `shared-types`, se necessário.
+2. Crie ou ajuste schema em `apps/api/src/schemas`.
+3. Atualize model em `apps/api/src/models`.
+4. Escreva lógica de domínio em `apps/api/src/services`.
+5. Exponha na rota correspondente.
+6. Garanta resposta consistente para o frontend e para o CLI.
 
-  async update(id: string, data: Partial<IEnvironment>): Promise<IEnvironment | null> {
-    return Environment.findByIdAndUpdate(id, data, { new: true })
-  }
+## Convenções para novos fluxos
 
-  async delete(id: string): Promise<void> {
-    await Environment.findByIdAndDelete(id)
-  }
-}
-```
+### Reexecução
 
-## Middleware de erro global
+- Reexecução não precisa duplicar um endpoint novo se o contrato atual já permite reenfileirar usando `execute`.
+- Se surgir endpoint específico de retry, ele deve ser uma camada semântica sobre o mesmo fluxo base.
 
-```typescript
-// /apps/api/src/middlewares/errorHandler.ts
-import { Request, Response, NextFunction } from 'express'
-import { ZodError } from 'zod'
+### Fluxos assíncronos
 
-export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {
-  if (err instanceof ZodError) {
-    return res.status(400).json({ error: 'Validation error', details: err.errors })
-  }
-  console.error(err)
-  res.status(500).json({ error: 'Internal server error' })
-}
-```
+- O backend não deve tentar “resolver” polling de UI.
+- O papel da API é armazenar e distribuir a configuração.
+- A confirmação assíncrona pertence ao step e ao runner.
 
-## Checklist ao implementar um novo endpoint
+### Artefatos
 
-- [ ] Model Mongoose com tipos corretos
-- [ ] Schema Zod para validação de entrada
-- [ ] Controller com try/catch e next(err)
-- [ ] Service com lógica de negócio isolada
-- [ ] Rota registrada no router correto
-- [ ] Tipo exportado em `/packages/shared-types`
+- O backend persiste caminhos e metadados.
+- Não misture persistência do resultado com renderização de arquivo.
 
-## Delegação
+## Checklist de qualidade backend
 
-Após planejar, acione o agent `backend-architect` para executar a implementação com código real e arquivos completos.
+- Tipos corretos e sem `any`
+- Respostas HTTP coerentes
+- Mensagens claras para erro de validação
+- Falhas do runner não derrubam a API
+- `health` continua íntegro
+- Nenhuma regra duplicada entre schema, model e service sem necessidade
+
+## O que evitar
+
+- Criar controller/service/repository excessivamente verboso para uma API pequena sem ganho real.
+- Colocar chamadas Playwright dentro da API.
+- Acoplar a API ao visual do frontend.
+- Esconder falhas de validação com `catch` genérico.
+
+## Como delegar
+
+- Mudou contrato visual ou UX -> `frontend-architect`
+- Mudou execução, compiler ou recorder -> `playwright-engineer`
+- Mudou produto, nomenclatura, priorização ou rollout -> `product-strategist`
+
+## Definição de pronto
+
+Uma entrega de backend só está pronta quando:
+
+- a rota funciona no monorepo local
+- o schema persiste corretamente no Mongo
+- o frontend e o CLI conseguem consumir o contrato sem remendos
+- o runner continua conseguindo atualizar runs sem quebrar compatibilidade

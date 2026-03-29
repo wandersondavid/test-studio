@@ -1,131 +1,167 @@
 ---
 name: test-studio-frontend
-description: Skill focada em construir e evoluir o frontend React do Test Studio. Use para criar telas, componentes, hooks e integração com API em /apps/web. Acione o agent frontend-architect ao final para executar a implementação.
+description: Skill de frontend do Test Studio. Use para evoluir o web app React com AppShell, shadcn, builder, recorder, histórico, reteste e integração com a API e o runner. Esta skill deve refletir a UI real que já está em produção interna.
 ---
 
 # Skill: test-studio-frontend
 
-Quando esta skill for acionada, você age como especialista de frontend do Test Studio. Planeje e implemente tudo dentro de `/apps/web`.
+Use esta skill para qualquer mudança em `apps/web`.
 
-## Stack obrigatória
+## Contexto visual e técnico atual
 
-- React 18 + TypeScript
-- React Router v6 (navegação)
-- Zustand (estado global)
-- Axios (chamadas HTTP)
-- Tailwind CSS ou CSS Modules (estilo)
+O frontend do Test Studio já tem:
 
-## Padrão de implementação
+- React + TypeScript
+- React Router
+- shell escuro com `AppShell`
+- base visual inspirada em shadcn
+- componentes em `src/components/ui`
+- tema global em `src/styles.css`
+- serviços centralizados em `src/services`
 
-### 1. Hook de dados
+Arquivos-chave:
 
-```typescript
-// /apps/web/src/hooks/useEnvironments.ts
-import { useState, useEffect } from 'react'
-import { api } from '../services/api'
-import type { Environment } from '@test-studio/shared-types'
+- `apps/web/src/App.tsx`
+- `apps/web/src/components/layout/AppShell.tsx`
+- `apps/web/src/components/ui/PageHeader.tsx`
+- `apps/web/src/components/ui/button.tsx`
+- `apps/web/src/components/ui/card.tsx`
+- `apps/web/src/pages/CaseBuilderPage.tsx`
+- `apps/web/src/pages/HistoryPage.tsx`
+- `apps/web/src/pages/RunDetailPage.tsx`
+- `apps/web/src/services/testRuns.ts`
 
-export function useEnvironments() {
-  const [environments, setEnvironments] = useState<Environment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+## Regras de frontend
 
-  useEffect(() => {
-    api.get<Environment[]>('/environments')
-      .then(res => setEnvironments(res.data))
-      .catch(() => setError('Erro ao carregar ambientes'))
-      .finally(() => setLoading(false))
-  }, [])
+1. Preserve o shell escuro neutro já adotado.
+2. Use os componentes UI existentes antes de criar novos.
+3. Priorize clareza operacional sobre excesso de decoração.
+4. `data-testid` continua obrigatório em elementos interativos.
+5. A tela precisa funcionar em notebook comum e monitor wide.
 
-  return { environments, loading, error }
-}
-```
+## Rotas que já fazem parte do produto
 
-### 2. Página
+- `/` dashboard
+- `/environments`
+- `/suites`
+- `/suites/:id`
+- `/cases/:id`
+- `/run`
+- `/history`
+- `/history/:id`
 
-```typescript
-// /apps/web/src/pages/EnvironmentsPage.tsx
-import { useEnvironments } from '../hooks/useEnvironments'
+## Partes mais sensíveis da UI
 
-export function EnvironmentsPage() {
-  const { environments, loading, error } = useEnvironments()
+### Builder de cenário
 
-  if (loading) return <div data-testid="loading">Carregando...</div>
-  if (error) return <div data-testid="error">{error}</div>
+`CaseBuilderPage.tsx` é o coração do produto.
 
-  return (
-    <div data-testid="environments-page">
-      <h1>Ambientes</h1>
-      <ul>
-        {environments.map(env => (
-          <li key={env._id} data-testid={`env-item-${env._id}`}>
-            <strong>{env.name}</strong> — {env.type} — {env.baseURL}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-```
+Ela já suporta:
 
-### 3. Serviço de API
+- steps manuais
+- preview descritivo do step
+- retry dinâmico por step
+- recorder com sessão Playwright
+- edição de retry em step existente
 
-```typescript
-// /apps/web/src/services/api.ts
-import axios from 'axios'
+Quando mexer aqui:
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3001',
-  headers: { 'Content-Type': 'application/json' },
-})
+- não esconda as informações importantes de execução
+- deixe explícito quando o preview é screenshot e não DOM interativo
+- preserve o fluxo mais comum com poucos cliques
 
-api.interceptors.response.use(
-  res => res,
-  err => {
-    const message = err.response?.data?.error ?? 'Erro inesperado'
-    return Promise.reject(new Error(message))
-  }
-)
-```
+### Histórico
 
-## Builder de Steps
+`HistoryPage.tsx` já funciona como central de reteste:
 
-O builder é a tela mais crítica. Padrão de estrutura:
+- filtra por sucesso, falha e ativos
+- reexecuta runs individuais
+- reenfileira lotes
 
-```typescript
-// /apps/web/src/components/builder/StepBuilder.tsx
-interface Step {
-  id: string
-  type: StepType
-  selector?: string
-  value?: string
-}
+Melhorias nessa área devem reforçar:
 
-type StepType = 'visit' | 'click' | 'fill' | 'select' | 'check' |
-                'waitForVisible' | 'waitForURL' | 'assertText' | 'assertVisible'
+- rapidez para retestar
+- leitura do status
+- confiança no que vai ser reenfileirado
 
-// Renderiza lista de steps com drag&drop (ou up/down no MVP)
-// Cada step: select de tipo + inputs condicionais
-// Label em linguagem natural: "Clique em #btn-login"
-```
+### Detalhe da execução
 
-## Regras de UX
+`RunDetailPage.tsx` precisa privilegiar:
 
-- Todo botão de ação tem `data-testid`
-- Loading state em toda chamada assíncrona
-- Mensagem de sucesso/erro após mutações (toast ou inline)
-- Confirmar antes de deletar qualquer item
-- Formulários com validação client-side antes de chamar API
+- status final
+- tempo total
+- tabela por step
+- erro do step falho
+- botão de reexecução
 
-## Checklist ao implementar uma nova tela
+## Convenções de UX do produto
 
-- [ ] Rota adicionada no `App.tsx`
-- [ ] Hook customizado para buscar dados
-- [ ] `data-testid` em elementos interativos
-- [ ] Loading state
-- [ ] Error state com mensagem amigável
-- [ ] Empty state (quando lista está vazia)
+### Usuário-alvo
 
-## Delegação
+O usuário nem sempre é dev. Então:
 
-Após planejar, acione o agent `frontend-architect` para executar com código real e arquivos completos.
+- evite jargão técnico sem contexto
+- use rótulos diretos
+- mostre caminhos de correção
+- trate `retry`, `timeout` e `intervalo` como conceitos editáveis e visíveis
+
+### Fluxos assíncronos
+
+Para cenários com Rabbit, jobs ou processamento em background:
+
+- o clique de ação vem antes
+- a confirmação vem depois
+- a UI deve incentivar `wait/assert` com retry
+- não estimule retry de ação destrutiva
+
+### Recorder
+
+O recorder atual não é iframe com DOM editável. Ele é:
+
+- sessão real no runner
+- preview por screenshot
+- clique remoto
+- preenchimento via ação selecionada
+
+Toda mudança deve respeitar essa realidade.
+
+## Quando criar componente novo
+
+Crie componente novo se:
+
+- a mesma estrutura visual aparece em mais de uma página
+- o comportamento precisa ser testável isoladamente
+- a página está ficando difícil de manter
+
+Não crie abstração só para “parecer framework”.
+
+## Checklist de entrega frontend
+
+- rota ou fluxo atualizado sem quebrar navegação
+- loading, erro e estado vazio tratados
+- `data-testid` nos elementos necessários
+- integração com `src/services`
+- responsivo o suficiente
+- visual coerente com o shell e com o tema
+
+## O que evitar
+
+- estilo inline espalhado sem necessidade
+- duplicar lógica de API em várias páginas
+- criar componentes genéricos demais antes da hora
+- esconder falha de execução atrás de UI bonita
+
+## Como delegar
+
+- Se faltar endpoint, contrato ou persistência -> `backend-architect`
+- Se faltar semântica de execução, recorder ou compiler -> `playwright-engineer`
+- Se a dúvida for de posicionamento, roadmap ou escopo -> `product-strategist`
+
+## Definição de pronto
+
+Uma entrega de frontend só está pronta quando:
+
+- o fluxo do usuário funciona ponta a ponta
+- a interface comunica bem o que aconteceu
+- a operação fica mais simples do que antes
+- o visual continua consistente com o restante do produto

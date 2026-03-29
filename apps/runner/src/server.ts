@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import { runTestCase } from './executor.js'
+import { requireRecorderAuth, requireRunnerSecret } from './auth.js'
 import {
   closeRecorderSession,
   createRecorderSession,
@@ -16,7 +17,7 @@ const PORT = process.env.PORT ?? 3002
 
 app.use(express.json())
 
-app.post('/run', async (req, res) => {
+app.post('/run', requireRunnerSecret, async (req, res) => {
   const { runId, testCase, environment, dataset } = req.body as {
     runId: string
     testCase: TestCase
@@ -34,7 +35,7 @@ app.post('/run', async (req, res) => {
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
-app.post('/recorder/sessions', async (req, res) => {
+app.post('/recorder/sessions', requireRecorderAuth, async (req, res) => {
   try {
     const { environment, startPath } = req.body as {
       environment: Environment
@@ -53,7 +54,7 @@ app.post('/recorder/sessions', async (req, res) => {
   }
 })
 
-app.get('/recorder/sessions/:id', async (req, res) => {
+app.get('/recorder/sessions/:id', requireRecorderAuth, async (req, res) => {
   try {
     const session = await getRecorderSessionState(req.params.id)
     res.json(session)
@@ -62,7 +63,7 @@ app.get('/recorder/sessions/:id', async (req, res) => {
   }
 })
 
-app.get('/recorder/sessions/:id/screenshot', async (req, res) => {
+app.get('/recorder/sessions/:id/screenshot', requireRecorderAuth, async (req, res) => {
   try {
     const screenshot = await getRecorderScreenshot(req.params.id)
     res.setHeader('Content-Type', 'image/png')
@@ -73,7 +74,7 @@ app.get('/recorder/sessions/:id/screenshot', async (req, res) => {
   }
 })
 
-app.post('/recorder/sessions/:id/navigate', async (req, res) => {
+app.post('/recorder/sessions/:id/navigate', requireRecorderAuth, async (req, res) => {
   try {
     const { target } = req.body as { target?: string }
 
@@ -89,7 +90,7 @@ app.post('/recorder/sessions/:id/navigate', async (req, res) => {
   }
 })
 
-app.post('/recorder/sessions/:id/interact', async (req, res) => {
+app.post('/recorder/sessions/:id/interact', requireRecorderAuth, async (req, res) => {
   try {
     const { action, x, y, value } = req.body as {
       action?: 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
@@ -117,7 +118,7 @@ app.post('/recorder/sessions/:id/interact', async (req, res) => {
   }
 })
 
-app.delete('/recorder/sessions/:id', async (req, res) => {
+app.delete('/recorder/sessions/:id', requireRecorderAuth, async (req, res) => {
   try {
     await closeRecorderSession(req.params.id)
     res.status(204).send()

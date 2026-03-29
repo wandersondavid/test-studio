@@ -1,5 +1,6 @@
 import { Schema, model, Document } from 'mongoose'
-import type { StepType, StepRetryConfig } from '@test-studio/shared-types'
+import type { StepType, StepRetryConfig, AuditActor } from '@test-studio/shared-types'
+import { AuditActorSchema } from './shared.js'
 
 interface ITestStep {
   id: string
@@ -21,6 +22,10 @@ export interface ITestCase extends Document {
   name: string
   description?: string
   steps: ITestStep[]
+  createdBy?: AuditActor
+  updatedBy?: AuditActor
+  lastRecordedBy?: AuditActor
+  lastRecordedAt?: Date
 }
 
 const StepSchema = new Schema<ITestStep>({
@@ -38,6 +43,10 @@ const TestCaseSchema = new Schema<ITestCase>({
   name: { type: String, required: true },
   description: { type: String },
   steps: { type: [StepSchema], default: [] },
+  createdBy: { type: AuditActorSchema },
+  updatedBy: { type: AuditActorSchema },
+  lastRecordedBy: { type: AuditActorSchema },
+  lastRecordedAt: { type: Date },
 }, { timestamps: true })
 
 export const TestCase = model<ITestCase>('TestCase', TestCaseSchema)
