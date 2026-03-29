@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
-import type { Environment, TestCase, Dataset, TestRun } from '@test-studio/shared-types'
+import type { Environment, TestCase, Dataset } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
+import { executeTestRun } from '../services/testRuns'
 
 export function RunPage() {
   const navigate = useNavigate()
@@ -31,12 +32,12 @@ export function RunPage() {
     setRunning(true)
     setError(null)
     try {
-      const res = await api.post<TestRun>('/test-runs/execute', {
+      const run = await executeTestRun({
         caseId: selected.caseId,
         environmentId: selected.environmentId,
         datasetId: selected.datasetId || undefined,
       })
-      navigate(`/history/${res.data._id}`)
+      navigate(`/history/${run._id}`)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao executar')
       setRunning(false)

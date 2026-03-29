@@ -12,7 +12,8 @@
     "dev:web": "npm run dev -w apps/web",
     "dev:runner": "npm run dev -w apps/runner",
     "build": "npm run build -w packages/shared-types && npm run build -w packages/test-compiler && npm run build -w apps/api && npm run build -w apps/runner && npm run build -w apps/web",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "test-studio": "node infra/scripts/test-studio-cli.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

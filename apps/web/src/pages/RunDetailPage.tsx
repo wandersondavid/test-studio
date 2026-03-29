@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../services/api'
 import type { TestRun, StepResult } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
 import { formatDuration, shortId } from '../lib/format'
+import { isRetryableRun, retryTestRun } from '../services/testRuns'
 
 export function RunDetailPage() {
+  const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [run, setRun] = useState<TestRun | null>(null)
   const [loading, setLoading] = useState(true)
+  const [retrying, setRetrying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     function poll() {
@@ -28,6 +34,26 @@ export function RunDetailPage() {
   if (!run) return <div className="empty-state" data-testid="not-found">Execução não encontrada</div>
 
   const failedSteps = run.stepResults.filter(step => step.status !== 'passed').length
+  const retryable = isRetryableRun(run)
+
+  async function handleRetryRun() {
+    if (!run) return
+
+    setRetrying(true)
+    setError(null)
+
+    try {
+      const nextRun = await retryTestRun({
+        caseId: run.caseId,
+        environmentId: run.environmentId,
+        datasetId: run.datasetId,
+      })
+      navigate(`/history/${nextRun._id}`)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao reenfileirar execução')
+      setRetrying(false)
+    }
+  }
 
   return (
     <div data-testid="run-detail-page" className="page-shell">
@@ -35,10 +61,24 @@ export function RunDetailPage() {
         eyebrow="Detalhe da execução"
         title={<>Execução <code>{shortId(run._id)}</code></>}
         description="Acompanhe o status final, a duração total e os resultados de cada step executado pelo runner."
+        actions={
+          <>
+            <Button
+              onClick={handleRetryRun}
+              disabled={!retryable || retrying}
+              data-testid="btn-retry-run"
+            >
+              {retrying ? 'Enfileirando...' : 'Reexecutar esse run'}
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/history">Voltar ao histórico</Link>
+            </Button>
+          </>
+        }
         meta={
           <>
             <StatusBadge status={run.status} />
-            <span className="meta-chip">{run.stepResults.length} steps processados</span>
+            <Badge variant="outline">{run.stepResults.length} steps processados</Badge>
           </>
         }
       />
@@ -66,7 +106,11 @@ export function RunDetailPage() {
         </article>
       </section>
 
-      {run.error && <div className="alert alert-error" data-testid="run-error">{run.error}</div>}
+      {(run.error || error) && (
+        <div className="alert alert-error" data-testid="run-error">
+          {error ?? run.error}
+        </div>
+      )}
 
       <section className="surface">
         <div className="section-heading">
