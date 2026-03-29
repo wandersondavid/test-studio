@@ -41,6 +41,10 @@ interface RecorderSessionResponse {
   pendingInput?: RecorderPendingInput
 }
 
+type BuilderTestCase = TestCase & {
+  setupCaseId?: string
+}
+
 interface StepTimingDraft {
   timeoutSeconds: string
   retryAttempts: string
@@ -324,7 +328,7 @@ async function runnerRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function CaseBuilderPage() {
   const { id } = useParams<{ id: string }>()
-  const [testCase, setTestCase] = useState<TestCase | null>(null)
+  const [testCase, setTestCase] = useState<BuilderTestCase | null>(null)
   const [steps, setSteps] = useState<TestStep[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingEnvironments, setLoadingEnvironments] = useState(true)
@@ -335,6 +339,11 @@ export function CaseBuilderPage() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingStepId, setEditingStepId] = useState<string | null>(null)
   const [editingTiming, setEditingTiming] = useState<StepTimingDraft>(() => buildTimingDraft())
+  const [availableCases, setAvailableCases] = useState<BuilderTestCase[]>([])
+  const [loadingAvailableCases, setLoadingAvailableCases] = useState(true)
+  const [selectedSetupCaseId, setSelectedSetupCaseId] = useState('')
+  const [savingSetupCase, setSavingSetupCase] = useState(false)
+  const [applyingSetupCase, setApplyingSetupCase] = useState(false)
   const [reusableBlocks, setReusableBlocks] = useState<ReusableBlock[]>([])
   const [loadingBlocks, setLoadingBlocks] = useState(true)
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
@@ -499,10 +508,11 @@ export function CaseBuilderPage() {
   useEffect(() => {
     setLoading(true)
 
-    api.get<TestCase>(`/test-cases/${id}`)
+    api.get<BuilderTestCase>(`/test-cases/${id}`)
       .then(response => {
         setTestCase(response.data)
         setSteps(response.data.steps)
+        setSelectedSetupCaseId(response.data.setupCaseId ?? '')
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false))
@@ -553,9 +563,22 @@ export function CaseBuilderPage() {
     }
   }
 
+  async function loadAvailableCases() {
+    setLoadingAvailableCases(true)
+    try {
+      const response = await api.get<BuilderTestCase[]>('/test-cases')
+      setAvailableCases(response.data.filter(item => item._id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar cenários reutilizáveis.')
+    } finally {
+      setLoadingAvailableCases(false)
+    }
+  }
+
   useEffect(() => {
     void loadReusableBlocks()
     void loadAuditLogs()
+    void loadAvailableCases()
   }, [id])
 
   useEffect(() => {
@@ -653,6 +676,28 @@ export function CaseBuilderPage() {
       await loadAuditLogs()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar steps')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveCasePatch(patch: Omit<Partial<BuilderTestCase>, 'setupCaseId'> & { setupCaseId?: string | null }) {
+    setSaving(true)
+    setError(null)
+
+    try {
+      const response = await api.put<BuilderTestCase>(`/test-cases/${id}`, patch)
+      setTestCase(current => current ? { ...current, ...response.data } : response.data)
+      if (response.data.steps) {
+        setSteps(response.data.steps)
+        stepsRef.current = response.data.steps
+      }
+      setSelectedSetupCaseId(response.data.setupCaseId ?? '')
+      await loadAuditLogs()
+      return response.data
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar o cenário.')
+      return null
     } finally {
       setSaving(false)
     }
@@ -761,6 +806,74 @@ export function CaseBuilderPage() {
   function handleInsertReusableBlock(block: ReusableBlock) {
     const clonedSteps = block.steps.map(step => ({ ...step, id: crypto.randomUUID() }))
     appendSteps(clonedSteps)
+  }
+
+  async function handleSaveSetupCase() {
+    setSavingSetupCase(true)
+    try {
+      const updated = await saveCasePatch({
+        setupCaseId: selectedSetupCaseId || null,
+      })
+
+      if (updated) {
+        setRecorderStatus(
+          updated.setupCaseId
+            ? 'Cenário base salvo. Ele será executado antes deste caso e pode ser aplicado no recorder.'
+            : 'Cenário base removido deste caso.'
+        )
+      }
+    } finally {
+      setSavingSetupCase(false)
+    }
+  }
+
+  async function handleApplySetupCaseToRecorder() {
+    if (!selectedSetupCaseId) {
+      setError('Selecione um cenário base antes de aplicar na sessão.')
+      return
+    }
+
+    if (!recorderSessionRef.current) {
+      setError('Inicie uma sessão do recorder antes de aplicar o cenário base.')
+      return
+    }
+
+    setApplyingSetupCase(true)
+    setRecorderBusy(true)
+    setError(null)
+    setRecorderStatus('Executando cenário base na sessão atual...')
+
+    try {
+      await applySetupCaseToRecorderSession(recorderSessionRef.current)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao aplicar o cenário base no recorder.')
+      setRecorderStatus('Não foi possível aplicar o cenário base na sessão.')
+    } finally {
+      setApplyingSetupCase(false)
+      setRecorderBusy(false)
+    }
+  }
+
+  async function applySetupCaseToRecorderSession(sessionId: string): Promise<boolean> {
+    if (!selectedSetupCaseId) {
+      return false
+    }
+
+    const response = await api.get<BuilderTestCase>(`/test-cases/${selectedSetupCaseId}/executable`)
+    const session = await runnerRequest<RecorderSessionResponse>(
+      `/recorder/sessions/${sessionId}/replay`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          steps: response.data.steps,
+        }),
+      }
+    )
+
+    applyRecorderState(session)
+    setLastCapturedSelector('')
+    setRecorderStatus(`Cenário base aplicado automaticamente com ${response.data.steps.length} steps. Continue gravando a partir daqui.`)
+    return true
   }
 
   function moveStep(index: number, direction: number) {
@@ -917,10 +1030,28 @@ export function CaseBuilderPage() {
       setRecorderPath(startPath)
       setShowRecorder(true)
       setRecorderOverlayPosition(null)
-      setRecorderStatus('Sessão criada. Use o modo automático para clicar e digitar sem trocar a ação manualmente.')
+      setRecorderStatus('Sessão criada. Preparando recorder...')
       setLastCapturedSelector('')
       applyRecorderState(session)
       appendSteps(session.steps)
+
+      if (selectedSetupCaseId) {
+        setApplyingSetupCase(true)
+        try {
+          await applySetupCaseToRecorderSession(session.sessionId)
+        } catch (setupError: unknown) {
+          setError(
+            setupError instanceof Error
+              ? `A sessão foi criada, mas o cenário base não pôde ser aplicado: ${setupError.message}`
+              : 'A sessão foi criada, mas o cenário base não pôde ser aplicado.'
+          )
+          setRecorderStatus('Sessão iniciada sem o setup automático. Você ainda pode aplicar o cenário base manualmente.')
+        } finally {
+          setApplyingSetupCase(false)
+        }
+      } else {
+        setRecorderStatus('Sessão criada. Use o modo automático para clicar e digitar sem trocar a ação manualmente.')
+      }
     } catch (err: unknown) {
       setRecorderActive(false)
       setRecorderSessionId(null)
@@ -1448,6 +1579,70 @@ export function CaseBuilderPage() {
           )}
         </Card>
       )}
+
+      <Card className="bg-card/70">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-['Space_Grotesk'] text-2xl">Cenário Base</CardTitle>
+          <CardDescription>
+            Reaproveite um caso de login ou preparação como pré-condição deste cenário.
+            Ele roda automaticamente antes da execução normal e também pode ser aplicado na sessão atual do recorder.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {loadingAvailableCases ? (
+            <div className="loading-state">Carregando cenários disponíveis...</div>
+          ) : availableCases.length === 0 ? (
+            <div className="empty-state">
+              Crie pelo menos outro cenário para usar como base reutilizável.
+            </div>
+          ) : (
+            <>
+              <div className="field-grid">
+                <label className="field">
+                  <span className="field-label">Cenário base / setup</span>
+                  <select
+                    data-testid="select-setup-case"
+                    value={selectedSetupCaseId}
+                    onChange={event => setSelectedSetupCaseId(event.target.value)}
+                    disabled={savingSetupCase || applyingSetupCase}
+                  >
+                    <option value="">Sem cenário base</option>
+                    {availableCases.map(testCaseOption => (
+                      <option key={testCaseOption._id} value={testCaseOption._id}>
+                        {testCaseOption.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-actions">
+                <Button
+                  data-testid="btn-save-setup-case"
+                  onClick={() => void handleSaveSetupCase()}
+                  disabled={savingSetupCase}
+                >
+                  {savingSetupCase ? 'Salvando setup...' : 'Salvar cenário base'}
+                </Button>
+                <Button
+                  variant="outline"
+                  data-testid="btn-apply-setup-case"
+                  onClick={() => void handleApplySetupCaseToRecorder()}
+                  disabled={!selectedSetupCaseId || !recorderSessionId || applyingSetupCase || recorderBusy}
+                >
+                  {applyingSetupCase ? 'Aplicando no recorder...' : 'Aplicar setup na sessão'}
+                </Button>
+              </div>
+
+              <div className="muted">
+                Dica: crie um caso chamado <code>LOGIN BASE</code>, selecione aqui e aplique na sessão do recorder.
+                Depois disso você grava só o fluxo específico do cenário atual, já autenticado.
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="bg-card/70">
         <CardHeader className="pb-2">

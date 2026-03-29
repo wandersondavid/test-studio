@@ -6,6 +6,7 @@ export interface TestCase extends AuditedResource {
   suiteId: string
   name: string
   description?: string
+  setupCaseId?: string
   steps: TestStep[]
   lastRecordedBy?: AuditActor
   lastRecordedAt?: string
@@ -17,5 +18,6 @@ export interface CreateTestCaseInput {
   suiteId: string
   name: string
   description?: string
+  setupCaseId?: string
   steps?: TestStep[]
 }

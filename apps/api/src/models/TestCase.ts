@@ -21,6 +21,7 @@ export interface ITestCase extends Document {
   suiteId: string
   name: string
   description?: string
+  setupCaseId?: string
   steps: ITestStep[]
   createdBy?: AuditActor
   updatedBy?: AuditActor
@@ -42,6 +43,7 @@ const TestCaseSchema = new Schema<ITestCase>({
   suiteId: { type: String, required: true },
   name: { type: String, required: true },
   description: { type: String },
+  setupCaseId: { type: String },
   steps: { type: [StepSchema], default: [] },
   createdBy: { type: AuditActorSchema },
   updatedBy: { type: AuditActorSchema },

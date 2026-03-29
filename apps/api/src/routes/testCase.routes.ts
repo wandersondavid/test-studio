@@ -26,6 +26,14 @@ testCaseRouter.get('/', async (req: Request, res: Response, next: NextFunction) 
   } catch (err) { next(err) }
 })
 
+testCaseRouter.get('/:id/executable', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await service.resolveExecutableById(req.params.id)
+    if (!item) { res.status(404).json({ error: 'Não encontrado' }); return }
+    res.json(item)
+  } catch (err) { next(err) }
+})
+
 testCaseRouter.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const item = await service.findById(req.params.id)
@@ -37,8 +45,17 @@ testCaseRouter.get('/:id', async (req: Request, res: Response, next: NextFunctio
 testCaseRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = createTestCaseSchema.parse(req.body)
+    const setupCaseId = data.setupCaseId ?? undefined
+    if (setupCaseId) {
+      const setupCase = await service.findById(setupCaseId)
+      if (!setupCase) {
+        res.status(404).json({ error: 'Cenário base não encontrado.' })
+        return
+      }
+    }
     const item = await service.create({
       ...data,
+      setupCaseId,
       createdBy: req.auth!.actor,
       updatedBy: req.auth!.actor,
       lastRecordedBy: req.auth!.actor,
@@ -59,10 +76,23 @@ testCaseRouter.post('/', async (req: Request, res: Response, next: NextFunction)
 testCaseRouter.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = updateTestCaseSchema.parse(req.body)
+    const setupCaseId = data.setupCaseId ?? undefined
+    if (setupCaseId) {
+      const setupCase = await service.findById(setupCaseId)
+      if (!setupCase) {
+        res.status(404).json({ error: 'Cenário base não encontrado.' })
+        return
+      }
+    }
+    if (setupCaseId && await service.wouldCreateSetupCycle(req.params.id, setupCaseId)) {
+      res.status(400).json({ error: 'Esse cenário base criaria um ciclo. Escolha outro setup.' })
+      return
+    }
     const current = await service.findById(req.params.id)
     const stepPayloadChanged = Array.isArray(data.steps)
     const item = await service.update(req.params.id, {
       ...data,
+      setupCaseId,
       updatedBy: req.auth!.actor,
       ...(stepPayloadChanged ? { lastRecordedBy: req.auth!.actor, lastRecordedAt: new Date() } : {}),
     })
@@ -128,7 +158,10 @@ testCaseRouter.put('/:id', async (req: Request, res: Response, next: NextFunctio
       action: 'case_updated',
       summary: `Cenário "${item.name}" foi atualizado.`,
       actor: req.auth!.actor,
-      metadata: { stepCount: item.steps.length },
+      metadata: {
+        stepCount: item.steps.length,
+        setupCaseId: item.setupCaseId ?? null,
+      },
     })
     res.json(item)
   } catch (err) { next(err) }

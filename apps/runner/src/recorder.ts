@@ -1,4 +1,5 @@
 import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { compileStep } from '@test-studio/test-compiler'
 import type { Environment, TestStep } from '@test-studio/shared-types'
 
 type RecorderAction = 'auto' | 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
@@ -58,6 +59,7 @@ export async function createRecorderSession(input: {
 }): Promise<RecorderSessionState> {
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({
+    baseURL: input.environment.baseURL,
     viewport: VIEWPORT,
     ignoreHTTPSErrors: true,
     extraHTTPHeaders: input.environment.headers ?? {},
@@ -349,6 +351,22 @@ export async function closeRecorderSession(sessionId: string): Promise<void> {
   await disposeSession(session)
 }
 
+export async function replayStepsInRecorderSession(input: {
+  sessionId: string
+  steps: TestStep[]
+}): Promise<RecorderSessionState> {
+  const session = getSession(input.sessionId)
+  touchSession(session)
+  session.pendingInput = undefined
+
+  for (const step of input.steps) {
+    await executeRecorderStep(session.page, step)
+    await settlePage(session.page)
+  }
+
+  return await buildSessionState(session)
+}
+
 function getSession(sessionId: string): RecorderSession {
   const session = sessions.get(sessionId)
   if (!session) {
@@ -380,6 +398,12 @@ async function disposeSession(session: RecorderSession): Promise<void> {
 
   await session.context.close().catch(() => undefined)
   await session.browser.close().catch(() => undefined)
+}
+
+async function executeRecorderStep(page: Page, step: TestStep): Promise<void> {
+  const code = compileStep(step)
+  // eslint-disable-next-line no-new-func
+  await new Function('page', 'expect', `return (async () => { ${code} })()`)(page, expect)
 }
 
 async function settlePage(page: Page): Promise<void> {

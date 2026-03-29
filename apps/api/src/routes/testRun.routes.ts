@@ -35,7 +35,7 @@ testRunRouter.post('/execute', requireAuth, async (req: Request, res: Response, 
     const { caseId, environmentId, datasetId, requestedVia, sourceRunId } = executeTestRunSchema.parse(req.body)
 
     const [testCase, environment] = await Promise.all([
-      caseService.findById(caseId),
+      caseService.resolveExecutableById(caseId),
       envService.findById(environmentId),
     ])
 
@@ -119,6 +119,11 @@ testRunRouter.post('/execute-suite', requireAuth, async (req: Request, res: Resp
     const createdRuns = []
 
     for (const testCase of targetCases) {
+      const executableCase = await caseService.resolveExecutableById(testCase.id)
+      if (!executableCase) {
+        continue
+      }
+
       const testRun = await runService.create({
         caseId: testCase.id,
         environmentId,
@@ -138,7 +143,7 @@ testRunRouter.post('/execute-suite', requireAuth, async (req: Request, res: Resp
         },
         body: JSON.stringify({
           runId: testRun.id,
-          testCase,
+          testCase: executableCase,
           environment,
           dataset,
         }),
@@ -151,7 +156,7 @@ testRunRouter.post('/execute-suite', requireAuth, async (req: Request, res: Resp
         entityType: 'run',
         entityId: testRun.id,
         action: 'suite_run_requested',
-        summary: `Execução da suíte disparou o cenário "${testCase.name}".`,
+        summary: `Execução da suíte disparou o cenário "${executableCase.name}".`,
         actor: req.auth!.actor,
         metadata: {
           suiteId,

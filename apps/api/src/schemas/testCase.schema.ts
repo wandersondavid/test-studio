@@ -19,6 +19,7 @@ export const createTestCaseSchema = z.object({
   suiteId: z.string().min(1),
   name: z.string().min(1, 'Nome obrigatório'),
   description: z.string().optional(),
+  setupCaseId: z.string().min(1).nullable().optional(),
   steps: z.array(stepSchema).optional().default([]),
 })
 

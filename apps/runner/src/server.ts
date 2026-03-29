@@ -9,9 +9,10 @@ import {
   getRecorderSessionState,
   interactRecorderSession,
   navigateRecorderSession,
+  replayStepsInRecorderSession,
   typeIntoRecorderSession,
 } from './recorder.js'
-import type { Environment, TestCase, Dataset } from '@test-studio/shared-types'
+import type { Environment, TestCase, Dataset, TestStep } from '@test-studio/shared-types'
 
 const app = express()
 const PORT = process.env.PORT ?? 3002
@@ -135,6 +136,26 @@ app.post('/recorder/sessions/:id/type', requireRecorderAuth, async (req, res) =>
     res.json(session)
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao digitar na sessão.' })
+  }
+})
+
+app.post('/recorder/sessions/:id/replay', requireRecorderAuth, async (req, res) => {
+  try {
+    const { steps } = req.body as { steps?: TestStep[] }
+
+    if (!Array.isArray(steps) || steps.length === 0) {
+      res.status(400).json({ error: 'Informe um conjunto de steps para aplicar na sessão.' })
+      return
+    }
+
+    const session = await replayStepsInRecorderSession({
+      sessionId: req.params.id,
+      steps,
+    })
+
+    res.json(session)
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao aplicar setup na sessão.' })
   }
 })
 
