@@ -2,7 +2,7 @@ import { Schema, model, Document } from 'mongoose'
 
 export interface IDataset extends Document {
   name: string
-  variables: Map<string, string>
+  variables: Record<string, string>
 }
 
 const DatasetSchema = new Schema<IDataset>({

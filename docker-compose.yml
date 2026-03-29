@@ -1,15 +1,11 @@
 services:
   mongo:
-    build: ./infra/docker/mongodb_replica
+    image: mongo:7
     container_name: test-studio-mongo
     restart: unless-stopped
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-teststudio}
-      MONGO_REPLICA_HOST: localhost
-      MONGO_REPLICA_PORT: 27017
+    command: ["mongod", "--bind_ip_all"]
     ports:
-      - '27017:27017'
+      - '${MONGO_HOST_PORT:-37017}:27017'
     volumes:
       - mongo-data:/data/db
     healthcheck:
@@ -26,10 +22,10 @@ services:
     container_name: test-studio-api
     restart: unless-stopped
     ports:
-      - '3001:3001'
+      - '${API_HOST_PORT:-3001}:3001'
     environment:
       PORT: 3001
-      MONGODB_URI: mongodb://${MONGO_USER:-root}:${MONGO_PASSWORD:-teststudio}@mongo:27017/test-studio?authSource=admin&replicaSet=rs0
+      MONGODB_URI: mongodb://mongo:27017/test-studio
       RUNNER_URL: http://runner:3002
       ARTIFACTS_DIR: /app/artifacts
     depends_on:
@@ -45,7 +41,7 @@ services:
     container_name: test-studio-runner
     restart: unless-stopped
     ports:
-      - '3002:3002'
+      - '${RUNNER_HOST_PORT:-3002}:3002'
     environment:
       PORT: 3002
       API_URL: http://api:3001
@@ -63,7 +59,7 @@ services:
     container_name: test-studio-web
     restart: unless-stopped
     ports:
-      - '5173:80'
+      - '${WEB_HOST_PORT:-5173}:80'
     depends_on:
       - api
 

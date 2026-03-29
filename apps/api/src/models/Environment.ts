@@ -4,8 +4,8 @@ export interface IEnvironment extends Document {
   name: string
   baseURL: string
   type: 'local' | 'dev' | 'hml' | 'prod'
-  headers: Map<string, string>
-  variables: Map<string, string>
+  headers: Record<string, string>
+  variables: Record<string, string>
 }
 
 const EnvironmentSchema = new Schema<IEnvironment>({

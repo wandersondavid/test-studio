@@ -1,6 +1,6 @@
-import { chromium, Page } from '@playwright/test'
+import { chromium, expect, Page } from '@playwright/test'
 import { compileStep, interpolateSteps } from '@test-studio/test-compiler'
-import { saveScreenshot, ensureArtifactDir } from './artifacts.js'
+import { saveScreenshot, ensureArtifactDir, getRunVideoDir } from './artifacts.js'
 import { postResult } from './api-client.js'
 import type { Environment, TestCase, Dataset, StepResult } from '@test-studio/shared-types'
 
@@ -25,7 +25,7 @@ export async function runTestCase({ runId, testCase, environment, dataset }: Run
   const context = await browser.newContext({
     baseURL: environment.baseURL,
     extraHTTPHeaders: environment.headers ?? {},
-    recordVideo: { dir: `./artifacts/${runId}/videos/` },
+    recordVideo: { dir: getRunVideoDir(runId) },
   })
   const page = await context.newPage()
 
