@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.44.1-jammy AS builder
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy AS builder
 WORKDIR /app
 COPY package.json tsconfig.json ./
 COPY apps/runner/package.json ./apps/runner/
@@ -12,7 +12,7 @@ RUN npm run build -w packages/shared-types
 RUN npm run build -w packages/test-compiler
 RUN npm run build -w apps/runner
 
-FROM mcr.microsoft.com/playwright:v1.44.1-jammy
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy
 WORKDIR /app
 COPY --from=builder /app/apps/runner/package.json ./package.json
 COPY --from=builder /app/apps/runner/dist ./dist

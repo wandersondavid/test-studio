@@ -26,8 +26,10 @@ services:
     environment:
       PORT: 3001
       MONGODB_URI: mongodb://mongo:27017/test-studio
-      RUNNER_URL: http://runner:3002
+      RUNNER_URL: http://host.docker.internal:3002
       ARTIFACTS_DIR: /app/artifacts
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       mongo:
         condition: service_healthy
@@ -40,11 +42,10 @@ services:
       dockerfile: infra/docker/runner.Dockerfile
     container_name: test-studio-runner
     restart: unless-stopped
-    ports:
-      - '${RUNNER_HOST_PORT:-3002}:3002'
+    network_mode: host
     environment:
       PORT: 3002
-      API_URL: http://api:3001
+      API_URL: http://localhost:3001
       ARTIFACTS_DIR: /app/artifacts
       STEP_TIMEOUT_MS: 10000
     depends_on:
@@ -60,6 +61,8 @@ services:
     restart: unless-stopped
     ports:
       - '${WEB_HOST_PORT:-5173}:80'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       - api
 

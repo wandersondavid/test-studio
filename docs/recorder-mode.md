@@ -1,189 +1,136 @@
-# Recorder Mode MVP
+# Recorder Mode
 
 ## Objetivo
 
-Adicionar ao **Case Builder** um modo de gravação visual onde a pessoa:
+O `Case Builder` agora tem um modo de gravação visual baseado em uma **sessão real do Playwright**.
 
-- escolhe um ambiente
-- abre a aplicação alvo dentro do Test Studio
-- interage com a tela real
-- vê os steps sendo adicionados automaticamente ao cenário
+Em vez de tentar abrir o alvo por proxy e injetar script no HTML, o builder:
 
-O foco deste MVP é reduzir a montagem manual de steps para ações comuns do dia a dia.
+- cria uma sessão no `runner`
+- abre a página em um browser real
+- mostra screenshots dessa sessão no frontend
+- executa a ação escolhida quando a pessoa clica no preview
+- transforma cada interação em `step`
 
-## O que foi implementado
+Essa abordagem resolve melhor cenários de `localhost` e reduz os problemas de `iframe`, `CSP` e `Host header`.
 
-### Frontend
+## Como funciona
 
-Na tela do builder de cenário:
+### 1. Frontend
+
+Na tela do builder:
 
 - botão `Gravar cenário`
-- painel `Modo gravar`
 - seleção de ambiente
-- campo de path inicial
-- preview embutido via `iframe`
-- captura automática de ações
-- anexação imediata dos steps ao cenário
+- path inicial
+- tipo de ação do recorder
+- preview por screenshot
 
 Arquivo principal:
 
 - `apps/web/src/pages/CaseBuilderPage.tsx`
 
-### Backend
+### 2. Runner
 
-Foi criado um proxy de gravação na API para carregar a aplicação alvo no mesmo domínio do builder:
+O `runner` expõe endpoints para controlar sessões Playwright:
 
-- remove cabeçalhos que impedem iframe
-- reescreve URLs HTML para continuar navegando pelo proxy
-- injeta um script cliente do recorder
-- mantém a aplicação carregada dentro do Test Studio
+- `POST /recorder/sessions`
+- `GET /recorder/sessions/:id`
+- `GET /recorder/sessions/:id/screenshot`
+- `POST /recorder/sessions/:id/navigate`
+- `POST /recorder/sessions/:id/interact`
+- `DELETE /recorder/sessions/:id`
 
-Arquivos:
+Arquivo principal:
 
-- `apps/api/src/routes/recorder.routes.ts`
-- `apps/api/src/server.ts`
+- `apps/runner/src/recorder.ts`
 
-## Como funciona
+As rotas HTTP ficam registradas em:
 
-### 1. Preview da aplicação alvo
+- `apps/runner/src/server.ts`
 
-Quando o usuário escolhe um ambiente e inicia a gravação, o builder abre:
+### 3. Web proxy
 
-- `/api/recorder/proxy/:environmentId/<path>`
+O `web` expõe `/runner/*` e encaminha para o serviço do runner:
 
-Essa rota:
+- `infra/docker/nginx.conf`
 
-- busca a `baseURL` do ambiente
-- encaminha a requisição para a aplicação real
-- devolve a resposta já adaptada para o builder
+Como o runner usa `network_mode: host` para enxergar `localhost` da máquina hospedeira, o proxy do web aponta para:
 
-### 2. Injeção do script do recorder
+- `http://host.docker.internal:3002`
 
-O backend injeta o script:
+## Fluxo da gravação
 
-- `/api/recorder/client.js`
+1. O builder envia `environment` + `startPath` para `POST /runner/recorder/sessions`
+2. O runner abre um browser Playwright
+3. O runner faz `page.goto()` da URL inicial
+4. O frontend passa a mostrar `/runner/recorder/sessions/:id/screenshot`
+5. A pessoa escolhe uma ação, como `click` ou `fill`
+6. Ao clicar no preview, o frontend converte a posição visual em coordenadas reais
+7. O runner localiza o elemento naquele ponto, executa a ação e devolve os `steps`
+8. O builder anexa esses `steps` ao cenário atual
 
-Esse script roda dentro da página aberta no preview e:
-
-- observa cliques
-- observa `change` em inputs, textarea, select e checkbox
-- observa mudança de URL com `pushState`, `replaceState`, `popstate` e `hashchange`
-- envia eventos para a tela do builder com `postMessage`
-
-### 3. Conversão para steps
-
-A tela do builder recebe os eventos e cria steps automaticamente:
+## Steps suportados no recorder
 
 - `visit`
 - `click`
 - `fill`
 - `select`
 - `check`
+- `assertVisible`
+- `assertText`
 - `waitForURL`
 
-Cada step novo é salvo no cenário atual.
+## Estratégia de seletor
 
-## Prioridade de seletores
-
-O recorder usa a seguinte ordem para gerar seletores:
+O runner tenta gerar seletores nessa ordem:
 
 1. `data-testid`
 2. `id`
 3. `name`
 4. `aria-label`
-5. fallback CSS estrutural com `nth-of-type`
+5. fallback estrutural com `nth-of-type`
 
-Regra principal do projeto mantida:
+Regra do projeto mantida:
 
-- sempre priorizar `data-testid`
-- evitar seletores frágeis sempre que possível
+- priorizar `data-testid`
+- evitar seletor frágil sempre que possível
 
-## Como usar
+## Ambiente local
 
-1. Suba a stack com `docker compose up --build -d`
-2. Acesse o web em `http://localhost:5173`
-3. Abra um cenário
-4. Clique em `Gravar cenário`
-5. Escolha o ambiente
-6. Informe o path inicial, por exemplo `/login`
-7. Clique em `Iniciar gravação`
-8. Interaja com a aplicação no preview
-9. Veja os steps entrando na lista do cenário
-10. Pause ou recarregue o preview quando quiser
+Para funcionar com aplicações locais, o `runner` roda com `network_mode: host`.
 
-## Comportamentos suportados neste MVP
+Isso faz com que:
 
-- clique em botão e link
-- preenchimento de input e textarea
-- seleção de option em select
-- marcação de checkbox ou radio
-- mudança de rota que gera `waitForURL`
-- gravação incremental no cenário já existente
+- `http://localhost:3009` no Playwright aponte para a sua máquina
+- o fluxo local funcione sem precisar trocar `localhost` por outro hostname
 
-## Limitações reais do MVP
+Arquivos relacionados:
 
-Este MVP foi feito para ser útil já, mas ainda tem limites técnicos importantes:
+- `docker-compose.yml`
+- `README.md`
 
-- aplicações muito fechadas por CSP/X-Frame podem exigir ajustes adicionais
-- fluxos com autenticação muito específica podem depender de cookies ou headers customizados
-- navegação dinâmica muito complexa pode precisar de regras extras no proxy
-- o recorder ainda não gera automaticamente:
-  - `assertText`
-  - `assertVisible`
-  - `waitForVisible`
-- o fallback estrutural de seletor pode ficar frágil se a página não tiver `data-testid`
-- ainda não existe timeline de edição de eventos gravados antes de salvar
+## Limitações atuais
 
-## Próximas evoluções recomendadas
-
-### Curto prazo
-
-- botão para transformar uma interação em `assertText`
-- botão para transformar uma interação em `assertVisible`
-- botão para inserir `waitForVisible`
-- indicador visual do elemento capturado
-- edição inline do step recém-gravado
-
-### Médio prazo
-
-- sessão de gravação via runner Playwright
-- gravação com highlights visuais reais no browser controlado
-- captura de screenshots durante a gravação
-- suporte melhor a cookies/sessão autenticada
-- fallback para abrir o gravador em popup quando iframe não for suficiente
-
-### Longo prazo
-
-- recorder híbrido: browser real + Playwright + builder visual
-- detecção de padrões de fluxo
-- sugestão automática de asserts
-- agrupamento em blocos reutilizáveis
-
-## Decisão arquitetural deste MVP
-
-Foi escolhida uma abordagem de **proxy + script injetado + postMessage** porque:
-
-- encaixa na arquitetura atual do monorepo
-- não exige novo serviço externo
-- funciona com o builder atual em React
-- permite entregar valor rápido
-- mantém espaço para evoluir depois para um recorder controlado pelo runner
-
-## Arquivos alterados para este MVP
-
-- `apps/api/src/routes/recorder.routes.ts`
-- `apps/api/src/server.ts`
-- `apps/web/src/pages/CaseBuilderPage.tsx`
+- o preview é por screenshot, não stream interativo contínuo
+- o clique ainda depende do screenshot atual estar sincronizado com a tela
+- se o alvo não tiver `data-testid`, o fallback estrutural pode ficar frágil
+- ainda não existe highlight visual do elemento antes de confirmar a ação
 
 ## Resumo
 
-O projeto agora tem um **modo de gravação visual funcional** no builder.
+O recorder atual é um **MVP funcional com sessão Playwright real**.
 
-Ele ainda é um MVP, mas já permite:
+Ele já entrega o principal:
 
-- abrir a aplicação alvo
-- navegar visualmente
-- executar interações reais
-- transformar essas interações em steps automaticamente
+- abre o sistema alvo
+- funciona bem em `localhost`
+- grava interações básicas
+- transforma essas interações em steps automaticamente
 
-Esse é um bom primeiro passo para evoluir o produto em direção a um **recorder visual completo** com Playwright no centro da arquitetura.
+É uma base boa para evoluir depois para:
+
+- stream ao vivo
+- highlight do alvo
+- edição inline do último step
+- captura assistida de asserts
