@@ -48,6 +48,16 @@ type RecorderEnvelope =
         description?: string
       }
     }
+  | {
+      source: 'test-studio-recorder'
+      event: 'blocked'
+      payload: {
+        status: number
+        reason: 'cloudflare' | 'unauthorized' | 'forbidden' | 'upstream-error'
+        targetUrl: string
+        environmentName: string
+      }
+    }
 
 function stepNeedsSelector(type: StepType) {
   return !['visit', 'waitForURL'].includes(type)
@@ -119,6 +129,21 @@ function buildRecordedStep(
     selector: payload.selector,
     value: payload.value,
     description: payload.description,
+  }
+}
+
+function recorderBlockedMessage(
+  payload: Extract<RecorderEnvelope, { event: 'blocked' }>['payload']
+): string {
+  switch (payload.reason) {
+    case 'cloudflare':
+      return `O ambiente ${payload.environmentName} está atrás de Cloudflare ou proteção anti-bot. O recorder por proxy não consegue abrir ${payload.targetUrl}.`
+    case 'unauthorized':
+      return `O ambiente ${payload.environmentName} exigiu autenticação para abrir ${payload.targetUrl}.`
+    case 'forbidden':
+      return `O ambiente ${payload.environmentName} recusou o acesso ao preview (${payload.status}) em ${payload.targetUrl}.`
+    default:
+      return `A aplicação respondeu com erro ${payload.status} ao abrir ${payload.targetUrl}.`
   }
 }
 
@@ -219,6 +244,13 @@ export function CaseBuilderPage() {
         }
 
         appendStep(step)
+        return
+      }
+
+      if (data.event === 'blocked') {
+        setRecorderReady(false)
+        setIsRecording(false)
+        setError(recorderBlockedMessage(data.payload))
       }
     }
 
@@ -379,7 +411,7 @@ export function CaseBuilderPage() {
             </div>
             <div style={{ minWidth: 240, textAlign: 'right' }}>
               <div style={{ fontSize: 12, color: recorderReady ? '#027a48' : '#b54708', marginBottom: 4 }}>
-                {isRecording ? (recorderReady ? 'Gravando e conectado ao preview' : 'Carregando preview do gravador...') : 'Gravador pausado'}
+                {isRecording ? (recorderReady ? 'Gravando e conectado ao preview' : 'Carregando preview do gravador...') : 'Gravador pausado ou bloqueado'}
               </div>
               <code style={{ fontSize: 12, color: '#475467' }}>{currentPreviewUrl}</code>
             </div>

@@ -38,6 +38,29 @@ async function proxyRecorderRequest(req: Request, res: Response, next: NextFunct
     }
 
     const upstreamResponse = await fetch(upstreamUrl, requestInit)
+    const cfMitigated = upstreamResponse.headers.get('cf-mitigated')
+
+    if (cfMitigated === 'challenge' || upstreamResponse.status >= 400) {
+      const reason = cfMitigated === 'challenge'
+        ? 'cloudflare'
+        : upstreamResponse.status === 401
+          ? 'unauthorized'
+          : upstreamResponse.status === 403
+            ? 'forbidden'
+            : 'upstream-error'
+
+      res
+        .status(200)
+        .type('text/html; charset=utf-8')
+        .send(renderRecorderBlockedPage({
+          environmentName: environment.name,
+          targetUrl: upstreamUrl,
+          status: upstreamResponse.status,
+          reason,
+          proxyBase,
+        }))
+      return
+    }
 
     applyProxyResponseHeaders(res, upstreamResponse.headers, proxyBase, environment.baseURL)
 
@@ -240,6 +263,133 @@ function injectRecorderIntoHtml(html: string, proxyBase: string): string {
   }
 
   return `${bootstrap}${html}`
+}
+
+function renderRecorderBlockedPage(input: {
+  environmentName: string
+  targetUrl: string
+  status: number
+  reason: 'cloudflare' | 'unauthorized' | 'forbidden' | 'upstream-error'
+  proxyBase: string
+}): string {
+  const reasonText = getBlockedReasonText(input.reason)
+  const payload = JSON.stringify({
+    source: 'test-studio-recorder',
+    event: 'blocked',
+    payload: {
+      status: input.status,
+      reason: input.reason,
+      targetUrl: input.targetUrl,
+      environmentName: input.environmentName,
+    },
+  })
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recorder bloqueado</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      .shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+      }
+      .card {
+        max-width: 720px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        padding: 28px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #fff7ed;
+        color: #b45309;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 16px 0 10px;
+        font-size: 28px;
+      }
+      p {
+        margin: 0 0 12px;
+        line-height: 1.6;
+      }
+      code {
+        display: block;
+        margin-top: 16px;
+        padding: 14px;
+        border-radius: 12px;
+        background: #0f172a;
+        color: #e2e8f0;
+        overflow-wrap: anywhere;
+      }
+      ul {
+        margin: 16px 0 0;
+        padding-left: 20px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="card">
+        <span class="badge">Preview bloqueado</span>
+        <h1>O ambiente não deixou o recorder abrir a página.</h1>
+        <p>${reasonText}</p>
+        <p>Status retornado pelo alvo: <strong>${input.status}</strong></p>
+        <p>Ambiente: <strong>${escapeHtml(input.environmentName)}</strong></p>
+        <code>${escapeHtml(input.targetUrl)}</code>
+        <ul>
+          <li>Se esse ambiente usa Cloudflare, CAPTCHA ou proteção anti-bot, o modo gravar via proxy não consegue atravessar o bloqueio.</li>
+          <li>Você pode testar com um ambiente sem proteção, normalmente local ou dev interno.</li>
+          <li>Se precisar gravar exatamente esse ambiente, o próximo passo é fazer o recorder em sessão real de navegador via Playwright.</li>
+        </ul>
+      </div>
+    </div>
+    <script>
+      window.parent?.postMessage(${payload}, window.location.origin);
+    </script>
+  </body>
+</html>`
+}
+
+function getBlockedReasonText(reason: 'cloudflare' | 'unauthorized' | 'forbidden' | 'upstream-error'): string {
+  switch (reason) {
+    case 'cloudflare':
+      return 'O proxy encontrou um challenge do Cloudflare ou proteção anti-bot antes de chegar na aplicação.'
+    case 'unauthorized':
+      return 'A aplicação respondeu que este acesso precisa de autenticação antes de liberar a tela.'
+    case 'forbidden':
+      return 'A aplicação recusou a abertura da página pelo proxy com resposta 403.'
+    default:
+      return 'A aplicação retornou erro ao tentar abrir a página pelo proxy do recorder.'
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 function getRecorderClientScript(): string {
