@@ -3,6 +3,9 @@ import { useParams } from 'react-router-dom'
 import { api } from '../services/api'
 import type { Environment, TestCase, TestStep, StepType } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 
 type RecorderAction = 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
 
@@ -497,23 +500,25 @@ export function CaseBuilderPage() {
         description="Monte steps manualmente ou grave interações reais em uma sessão Playwright sem sair do workspace."
         actions={
           <>
-            <button className="button-secondary" data-testid="btn-toggle-recorder" onClick={() => setShowRecorder(current => !current)}>
+            <Button variant="outline" data-testid="btn-toggle-recorder" onClick={() => setShowRecorder(current => !current)}>
               {showRecorder ? 'Ocultar gravador' : 'Gravar cenário'}
-            </button>
-            <button
-              className={showAddForm ? 'button-secondary' : 'button-primary'}
+            </Button>
+            <Button
+              variant={showAddForm ? 'outline' : 'default'}
               data-testid="btn-open-add-step-header"
               onClick={() => setShowAddForm(current => !current)}
             >
               {showAddForm ? 'Fechar editor' : '+ Adicionar step'}
-            </button>
+            </Button>
           </>
         }
         meta={
           <>
-            <span className="meta-chip">{steps.length} steps</span>
-            <span className="meta-chip accent">{recorderSessionId ? 'Recorder ativo' : 'Modo manual'}</span>
-            {saving && <span className="meta-chip">Salvando...</span>}
+            <Badge variant="outline">{steps.length} steps</Badge>
+            <Badge variant={recorderSessionId ? 'secondary' : 'outline'}>
+              {recorderSessionId ? 'Recorder ativo' : 'Modo manual'}
+            </Badge>
+            {saving && <Badge variant="outline">Salvando...</Badge>}
           </>
         }
       />
@@ -525,29 +530,35 @@ export function CaseBuilderPage() {
       )}
 
       {showRecorder && (
-        <section data-testid="recorder-panel" className="surface recorder-shell">
-          <div className="section-heading">
-            <div>
-              <h2>Modo gravar com Playwright</h2>
-              <p>
-                O builder cria uma sessão real no runner, tira screenshots da página e executa a ação escolhida quando você
-                clica no preview. Cada interação vira step automaticamente.
-              </p>
+        <Card data-testid="recorder-panel" className="recorder-shell bg-card/70">
+          <CardHeader className="pb-1">
+            <div className="section-heading mb-0">
+              <div>
+                <CardTitle className="font-['Space_Grotesk'] text-2xl">Modo gravar com Playwright</CardTitle>
+                <CardDescription className="mt-2 max-w-3xl">
+                  O builder cria uma sessão real no runner, tira screenshots da página e executa a ação escolhida quando você
+                  clica no preview. Cada interação vira step automaticamente.
+                </CardDescription>
+              </div>
+              <div className="toolbar-inline">
+                <Badge variant={recorderActive ? 'secondary' : 'outline'}>
+                  {recorderBusy ? 'Executando ação no browser...' : recorderActive ? 'Sessão Playwright ativa' : 'Sessão ainda não iniciada'}
+                </Badge>
+                <code>{currentPreviewUrl}</code>
+              </div>
             </div>
-            <div className="toolbar-inline">
-              <span className={`meta-chip${recorderActive ? ' accent' : ''}`}>
-                {recorderBusy ? 'Executando ação no browser...' : recorderActive ? 'Sessão Playwright ativa' : 'Sessão ainda não iniciada'}
-              </span>
-              <code>{currentPreviewUrl}</code>
-            </div>
-          </div>
+          </CardHeader>
 
           {loadingEnvironments ? (
-            <div className="loading-state">Carregando ambientes...</div>
+            <CardContent>
+              <div className="loading-state">Carregando ambientes...</div>
+            </CardContent>
           ) : environments.length === 0 ? (
-            <div className="empty-state">Cadastre pelo menos um ambiente para usar o gravador.</div>
+            <CardContent>
+              <div className="empty-state">Cadastre pelo menos um ambiente para usar o gravador.</div>
+            </CardContent>
           ) : (
-            <>
+            <CardContent className="space-y-5">
               <div className="field-grid">
                 <label className="field">
                   <span className="field-label">Ambiente</span>
@@ -578,21 +589,21 @@ export function CaseBuilderPage() {
               </div>
 
               <div className="form-actions">
-                <button className="button-primary" data-testid="btn-start-recorder" onClick={handleStartRecorder} disabled={recorderBusy}>
+                <Button data-testid="btn-start-recorder" onClick={handleStartRecorder} disabled={recorderBusy}>
                   {recorderSessionId ? 'Reiniciar sessão' : 'Iniciar gravação'}
-                </button>
+                </Button>
 
-                <button className="button-secondary" data-testid="btn-navigate-recorder" onClick={handleOpenPath} disabled={!recorderSessionId || recorderBusy}>
+                <Button variant="outline" data-testid="btn-navigate-recorder" onClick={handleOpenPath} disabled={!recorderSessionId || recorderBusy}>
                   Abrir path
-                </button>
+                </Button>
 
-                <button className="button-secondary" data-testid="btn-reload-recorder" onClick={handleRefreshRecorder} disabled={!recorderSessionId || recorderBusy}>
+                <Button variant="outline" data-testid="btn-reload-recorder" onClick={handleRefreshRecorder} disabled={!recorderSessionId || recorderBusy}>
                   Atualizar screenshot
-                </button>
+                </Button>
 
-                <button className="button-danger" data-testid="btn-stop-recorder" onClick={handleStopRecorder} disabled={!recorderSessionId || recorderBusy}>
+                <Button variant="destructive" data-testid="btn-stop-recorder" onClick={handleStopRecorder} disabled={!recorderSessionId || recorderBusy}>
                   Encerrar
-                </button>
+                </Button>
               </div>
 
               <div className="field-grid">
@@ -678,122 +689,125 @@ export function CaseBuilderPage() {
                   </div>
                 )}
               </div>
-            </>
+            </CardContent>
           )}
-        </section>
+        </Card>
       )}
 
-      <section className="surface">
-        <div className="section-heading">
-          <div>
-            <h2>Sequência de steps</h2>
-            <p>Revise, reordene e remova etapas antes de executar o cenário.</p>
-          </div>
-        </div>
+      <Card className="bg-card/70">
+        <CardHeader className="pb-2">
+          <CardTitle className="font-['Space_Grotesk'] text-2xl">Sequência de steps</CardTitle>
+          <CardDescription>Revise, reordene e remova etapas antes de executar o cenário.</CardDescription>
+        </CardHeader>
 
-        <ol className="step-list">
-          {steps.map((step, index) => (
-            <li key={step.id} data-testid={`step-item-${step.id}`}>
-              <div className="step-card">
-                <div className="step-card-main">
-                  <div className="step-card-index">Step {index + 1}</div>
-                  <div className="step-card-text">{describeStep(step)}</div>
+        <CardContent className="space-y-5">
+          <ol className="step-list">
+            {steps.map((step, index) => (
+              <li key={step.id} data-testid={`step-item-${step.id}`}>
+                <div className="step-card">
+                  <div className="step-card-main">
+                    <div className="step-card-index">Step {index + 1}</div>
+                    <div className="step-card-text">{describeStep(step)}</div>
+                  </div>
+                  <div className="step-actions">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      data-testid={`btn-up-${step.id}`}
+                      onClick={() => moveStep(index, -1)}
+                      disabled={index === 0}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      data-testid={`btn-down-${step.id}`}
+                      onClick={() => moveStep(index, 1)}
+                      disabled={index === steps.length - 1}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      data-testid={`btn-remove-${step.id}`}
+                      onClick={() => handleRemoveStep(step.id)}
+                    >
+                      ✕
+                    </Button>
+                  </div>
                 </div>
-                <div className="step-actions">
-                  <button
-                    className="button-secondary"
-                    data-testid={`btn-up-${step.id}`}
-                    onClick={() => moveStep(index, -1)}
-                    disabled={index === 0}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    className="button-secondary"
-                    data-testid={`btn-down-${step.id}`}
-                    onClick={() => moveStep(index, 1)}
-                    disabled={index === steps.length - 1}
-                  >
-                    ↓
-                  </button>
-                  <button
-                    className="button-danger"
-                    data-testid={`btn-remove-${step.id}`}
-                    onClick={() => handleRemoveStep(step.id)}
-                  >
-                    ✕
-                  </button>
+              </li>
+            ))}
+          </ol>
+
+          {showAddForm ? (
+            <div data-testid="add-step-form" className="surface surface-muted">
+              <div className="section-heading">
+                <div>
+                  <h3>Novo step manual</h3>
+                  <p>Complete apenas os campos necessários para a ação escolhida.</p>
                 </div>
               </div>
-            </li>
-          ))}
-        </ol>
 
-        {showAddForm ? (
-          <div data-testid="add-step-form" className="surface surface-muted">
-            <div className="section-heading">
-              <div>
-                <h3>Novo step manual</h3>
-                <p>Complete apenas os campos necessários para a ação escolhida.</p>
+              <div className="field-grid">
+                <label className="field">
+                  <span className="field-label">Tipo</span>
+                  <select
+                    data-testid="select-step-type"
+                    value={newStep.type}
+                    onChange={event => setNewStep(current => ({ ...current, type: event.target.value as StepType }))}
+                  >
+                    {STEP_TYPES.map(type => (
+                      <option key={type} value={type}>
+                        {STEP_LABELS[type]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {stepNeedsSelector(newStep.type ?? 'click') && (
+                  <label className="field">
+                    <span className="field-label">Seletor CSS</span>
+                    <input
+                      data-testid="input-step-selector"
+                      placeholder='[data-testid="meu-elemento"]'
+                      value={newStep.selector ?? ''}
+                      onChange={event => setNewStep(current => ({ ...current, selector: event.target.value }))}
+                    />
+                  </label>
+                )}
+
+                {stepNeedsValue(newStep.type ?? 'click') && (
+                  <label className="field">
+                    <span className="field-label">Valor</span>
+                    <input
+                      data-testid="input-step-value"
+                      placeholder='valor ou {{variavel}}'
+                      value={newStep.value ?? ''}
+                      onChange={event => setNewStep(current => ({ ...current, value: event.target.value }))}
+                    />
+                  </label>
+                )}
+              </div>
+
+              <div className="form-actions">
+                <Button data-testid="btn-confirm-add-step" onClick={handleAddManualStep}>
+                  Adicionar
+                </Button>
+                <Button variant="outline" onClick={() => setShowAddForm(false)}>Cancelar</Button>
               </div>
             </div>
-
-            <div className="field-grid">
-              <label className="field">
-                <span className="field-label">Tipo</span>
-                <select
-                  data-testid="select-step-type"
-                  value={newStep.type}
-                  onChange={event => setNewStep(current => ({ ...current, type: event.target.value as StepType }))}
-                >
-                  {STEP_TYPES.map(type => (
-                    <option key={type} value={type}>
-                      {STEP_LABELS[type]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              {stepNeedsSelector(newStep.type ?? 'click') && (
-                <label className="field">
-                  <span className="field-label">Seletor CSS</span>
-                  <input
-                    data-testid="input-step-selector"
-                    placeholder='[data-testid="meu-elemento"]'
-                    value={newStep.selector ?? ''}
-                    onChange={event => setNewStep(current => ({ ...current, selector: event.target.value }))}
-                  />
-                </label>
-              )}
-
-              {stepNeedsValue(newStep.type ?? 'click') && (
-                <label className="field">
-                  <span className="field-label">Valor</span>
-                  <input
-                    data-testid="input-step-value"
-                    placeholder='valor ou {{variavel}}'
-                    value={newStep.value ?? ''}
-                    onChange={event => setNewStep(current => ({ ...current, value: event.target.value }))}
-                  />
-                </label>
-              )}
+          ) : (
+            <div className="form-actions" style={{ marginTop: 18 }}>
+              <Button variant="outline" data-testid="btn-add-step" onClick={() => setShowAddForm(true)}>
+                + Adicionar step
+              </Button>
             </div>
-
-            <div className="form-actions">
-              <button className="button-primary" data-testid="btn-confirm-add-step" onClick={handleAddManualStep}>
-                Adicionar
-              </button>
-              <button className="button-secondary" onClick={() => setShowAddForm(false)}>Cancelar</button>
-            </div>
-          </div>
-        ) : (
-          <div className="form-actions" style={{ marginTop: 18 }}>
-            <button className="button-secondary" data-testid="btn-add-step" onClick={() => setShowAddForm(true)}>
-              + Adicionar step
-            </button>
-          </div>
-        )}
-      </section>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

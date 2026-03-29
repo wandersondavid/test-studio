@@ -4,6 +4,9 @@ import { api } from '../services/api'
 import type { TestRun } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { Badge } from '../components/ui/badge'
+import { Button } from '../components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { formatDateTimeBR, shortId } from '../lib/format'
 
 export function DashboardPage() {
@@ -28,85 +31,88 @@ export function DashboardPage() {
         description="Acompanhe recorder, execução e histórico de runs em uma interface mais clara para o time inteiro."
         actions={
           <>
-            <Link to="/run" className="button-link button-primary">Executar cenário</Link>
-            <Link to="/suites" className="button-link button-secondary">Abrir suítes</Link>
+            <Button asChild>
+              <Link to="/run">Executar cenário</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/suites">Abrir suítes</Link>
+            </Button>
           </>
         }
         meta={
           <>
-            <span className="meta-chip accent">Recorder Playwright</span>
-            <span className="meta-chip">Builder visual</span>
+            <Badge variant="secondary">Recorder Playwright</Badge>
+            <Badge variant="outline">Builder visual</Badge>
           </>
         }
       />
 
-      <section className="stats-grid">
-        <article className="stat-card">
-          <span className="stat-label">Execuções recentes</span>
-          <strong className="stat-value">{runs.length}</strong>
-          <span className="stat-note">Últimos runs visíveis no dashboard</span>
-        </article>
-        <article className="stat-card">
-          <span className="stat-label">Sucesso</span>
-          <strong className="stat-value">{passedRuns}</strong>
-          <span className="stat-note">Runs finalizados com status passed</span>
-        </article>
-        <article className="stat-card">
-          <span className="stat-label">Falhas</span>
-          <strong className="stat-value">{failedRuns}</strong>
-          <span className="stat-note">Runs com falha ou erro</span>
-        </article>
-        <article className="stat-card">
-          <span className="stat-label">Ativos</span>
-          <strong className="stat-value">{activeRuns}</strong>
-          <span className="stat-note">Execuções pendentes ou em andamento</span>
-        </article>
+      <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Execuções recentes', value: runs.length, note: 'Últimos runs visíveis no dashboard' },
+          { label: 'Sucesso', value: passedRuns, note: 'Runs finalizados com status passed' },
+          { label: 'Falhas', value: failedRuns, note: 'Runs com falha ou erro' },
+          { label: 'Ativos', value: activeRuns, note: 'Execuções pendentes ou em andamento' },
+        ].map(item => (
+          <Card key={item.label} className="bg-card/70">
+            <CardHeader className="pb-3">
+              <CardDescription className="text-[0.72rem] uppercase tracking-[0.16em]">{item.label}</CardDescription>
+              <CardTitle className="font-['Space_Grotesk'] text-4xl font-semibold">{item.value}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">{item.note}</p>
+            </CardContent>
+          </Card>
+        ))}
       </section>
 
-      <section className="surface">
-        <div className="section-heading">
-          <div>
-            <h2>Últimas execuções</h2>
-            <p>Use essa área para acompanhar rapidamente o que acabou de rodar.</p>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="loading-state" data-testid="loading">Carregando...</div>
-        ) : runs.length === 0 ? (
-          <div className="empty-state" data-testid="empty">
-            <span>Nenhuma execução ainda.</span>
-            <Link to="/run" className="button-link button-primary">Executar agora</Link>
-          </div>
-        ) : (
-          <div className="table-shell">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Status</th>
-                  <th>Data</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map(run => (
-                  <tr key={run._id} data-testid={`run-row-${run._id}`}>
-                    <td className="table-id">{shortId(run._id)}</td>
-                    <td>
-                      <StatusBadge status={run.status} />
-                    </td>
-                    <td>{formatDateTimeBR(run.createdAt)}</td>
-                    <td>
-                      <Link to={`/history/${run._id}`} className="button-link button-secondary">Ver detalhes</Link>
-                    </td>
+      <Card className="bg-card/70">
+        <CardHeader>
+          <CardTitle className="font-['Space_Grotesk'] text-2xl">Últimas execuções</CardTitle>
+          <CardDescription>Use essa área para acompanhar rapidamente o que acabou de rodar.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="loading-state" data-testid="loading">Carregando...</div>
+          ) : runs.length === 0 ? (
+            <div className="empty-state" data-testid="empty">
+              <span>Nenhuma execução ainda.</span>
+              <Button asChild>
+                <Link to="/run">Executar agora</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border/70">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Status</th>
+                    <th>Data</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {runs.map(run => (
+                    <tr key={run._id} data-testid={`run-row-${run._id}`}>
+                      <td className="table-id">{shortId(run._id)}</td>
+                      <td>
+                        <StatusBadge status={run.status} />
+                      </td>
+                      <td>{formatDateTimeBR(run.createdAt)}</td>
+                      <td>
+                        <Button asChild variant="ghost" size="sm">
+                          <Link to={`/history/${run._id}`}>Ver detalhes</Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

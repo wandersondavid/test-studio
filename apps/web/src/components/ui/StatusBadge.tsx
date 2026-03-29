@@ -1,11 +1,21 @@
+import { Badge } from '@/components/ui/badge'
+
 interface StatusBadgeProps {
   status: string
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
+  const normalized = status.toLowerCase()
+  const variant =
+    normalized === 'passed'
+      ? 'success'
+      : normalized === 'running'
+        ? 'secondary'
+        : normalized === 'pending'
+          ? 'warning'
+          : 'danger'
+
   return (
-    <span className={`status-pill status-${status}`}>
-      {status}
-    </span>
+    <Badge variant={variant}>{status}</Badge>
   )
 }

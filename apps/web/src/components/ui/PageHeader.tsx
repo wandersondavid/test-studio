@@ -10,15 +10,17 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, description, actions, meta }: PageHeaderProps) {
   return (
-    <header className="page-header">
-      <div className="page-header-copy">
-        {eyebrow && <div className="page-kicker">{eyebrow}</div>}
-        <h1 className="page-title">{title}</h1>
-        {description && <p className="page-description">{description}</p>}
-        {meta && <div className="page-meta">{meta}</div>}
+    <header className="mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+      <div className="max-w-4xl space-y-3">
+        {eyebrow && <div className="page-kicker text-[0.72rem]">{eyebrow}</div>}
+        <h1 className="font-['Space_Grotesk'] text-4xl font-semibold tracking-[-0.04em] text-foreground md:text-5xl">
+          {title}
+        </h1>
+        {description && <p className="max-w-3xl text-sm leading-7 text-muted-foreground md:text-base">{description}</p>}
+        {meta && <div className="flex flex-wrap gap-2">{meta}</div>}
       </div>
 
-      {actions && <div className="page-actions">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 xl:justify-end">{actions}</div>}
     </header>
   )
 }
