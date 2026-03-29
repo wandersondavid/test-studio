@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../services/api'
 import type { Environment, TestCase, Dataset, TestRun } from '@test-studio/shared-types'
+import { PageHeader } from '../components/ui/PageHeader'
 
 export function RunPage() {
   const navigate = useNavigate()
@@ -43,52 +44,86 @@ export function RunPage() {
   }
 
   return (
-    <div data-testid="run-page">
-      <h1>Executar teste</h1>
-      <form data-testid="run-form" onSubmit={handleRun} style={{ background: '#fff', padding: 24, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 480 }}>
-        <div>
-          <label>Cenário *</label><br />
-          <select
-            data-testid="select-case"
-            value={selected.caseId}
-            onChange={e => setSelected(s => ({ ...s, caseId: e.target.value }))}
-            required
-            style={{ width: '100%', padding: 8 }}
-          >
-            <option value="">Selecione...</option>
-            {cases.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>Ambiente *</label><br />
-          <select
-            data-testid="select-environment"
-            value={selected.environmentId}
-            onChange={e => setSelected(s => ({ ...s, environmentId: e.target.value }))}
-            required
-            style={{ width: '100%', padding: 8 }}
-          >
-            <option value="">Selecione...</option>
-            {environments.map(env => <option key={env._id} value={env._id}>{env.name} ({env.type})</option>)}
-          </select>
-        </div>
-        <div>
-          <label>Dataset (opcional)</label><br />
-          <select
-            data-testid="select-dataset"
-            value={selected.datasetId}
-            onChange={e => setSelected(s => ({ ...s, datasetId: e.target.value }))}
-            style={{ width: '100%', padding: 8 }}
-          >
-            <option value="">Nenhum</option>
-            {datasets.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
-          </select>
-        </div>
-        {error && <p style={{ color: 'red' }} data-testid="run-error">{error}</p>}
-        <button data-testid="btn-run" type="submit" disabled={running} style={{ padding: '10px 24px', background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
-          {running ? 'Executando...' : 'Executar'}
-        </button>
-      </form>
+    <div data-testid="run-page" className="page-shell">
+      <PageHeader
+        eyebrow="Orquestração"
+        title="Executar teste"
+        description="Selecione cenário, ambiente e dataset para disparar um run completo no runner Playwright."
+        meta={
+          <>
+            <span className="meta-chip">{cases.length} cenários</span>
+            <span className="meta-chip">{environments.length} ambientes</span>
+            <span className="meta-chip accent">{datasets.length} datasets</span>
+          </>
+        }
+      />
+
+      <div className="run-form-layout">
+        <form data-testid="run-form" onSubmit={handleRun} className="surface inline-form">
+          <div className="field-grid">
+            <label className="field">
+              <span className="field-label">Cenário *</span>
+              <select
+                data-testid="select-case"
+                value={selected.caseId}
+                onChange={e => setSelected(s => ({ ...s, caseId: e.target.value }))}
+                required
+              >
+                <option value="">Selecione...</option>
+                {cases.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+              </select>
+            </label>
+
+            <label className="field">
+              <span className="field-label">Ambiente *</span>
+              <select
+                data-testid="select-environment"
+                value={selected.environmentId}
+                onChange={e => setSelected(s => ({ ...s, environmentId: e.target.value }))}
+                required
+              >
+                <option value="">Selecione...</option>
+                {environments.map(env => <option key={env._id} value={env._id}>{env.name} ({env.type})</option>)}
+              </select>
+            </label>
+
+            <label className="field">
+              <span className="field-label">Dataset (opcional)</span>
+              <select
+                data-testid="select-dataset"
+                value={selected.datasetId}
+                onChange={e => setSelected(s => ({ ...s, datasetId: e.target.value }))}
+              >
+                <option value="">Nenhum</option>
+                {datasets.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+              </select>
+            </label>
+          </div>
+
+          {error && <div className="alert alert-error" data-testid="run-error">{error}</div>}
+
+          <div className="form-actions">
+            <button className="button-primary" data-testid="btn-run" type="submit" disabled={running}>
+              {running ? 'Executando...' : 'Executar cenário'}
+            </button>
+          </div>
+        </form>
+
+        <aside className="surface surface-muted">
+          <div className="section-heading">
+            <div>
+              <h3>Checklist rápido</h3>
+              <p>Antes de disparar, confirme os pontos que mais quebram runs em ambiente real.</p>
+            </div>
+          </div>
+          <ul className="check-list">
+            <li>Garanta que o ambiente selecionado está acessível pelo runner.</li>
+            <li>Prefira steps com `data-testid` quando possível.</li>
+            <li>Use dataset quando quiser repetir o mesmo cenário com outras massas.</li>
+            <li>Depois do disparo, acompanhe os logs no histórico por step.</li>
+          </ul>
+        </aside>
+      </div>
     </div>
   )
 }

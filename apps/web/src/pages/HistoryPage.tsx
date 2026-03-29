@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../services/api'
 import type { TestRun } from '@test-studio/shared-types'
+import { PageHeader } from '../components/ui/PageHeader'
+import { StatusBadge } from '../components/ui/StatusBadge'
+import { formatDateTimeBR, formatDuration, shortId } from '../lib/format'
 
 export function HistoryPage() {
   const [runs, setRuns] = useState<TestRun[]>([])
@@ -13,36 +16,51 @@ export function HistoryPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <p data-testid="loading">Carregando...</p>
+  if (loading) return <div className="loading-state" data-testid="loading">Carregando...</div>
 
   return (
-    <div data-testid="history-page">
-      <h1>Histórico de execuções</h1>
+    <div data-testid="history-page" className="page-shell">
+      <PageHeader
+        eyebrow="Observabilidade"
+        title="Histórico de execuções"
+        description="Veja a linha do tempo dos runs, acompanhe duração, status e entre nos detalhes de cada falha."
+        meta={
+          <>
+            <span className="meta-chip">{runs.length} registros</span>
+            <span className="meta-chip accent">Logs por step</span>
+          </>
+        }
+      />
+
       {runs.length === 0 ? (
-        <p data-testid="empty">Nenhuma execução ainda.</p>
+        <div className="empty-state" data-testid="empty">Nenhuma execução ainda.</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8 }}>
-          <thead>
-            <tr style={{ background: '#f0f0f0' }}>
-              <th style={{ padding: 12, textAlign: 'left' }}>ID</th>
-              <th style={{ padding: 12, textAlign: 'left' }}>Status</th>
-              <th style={{ padding: 12, textAlign: 'left' }}>Duração</th>
-              <th style={{ padding: 12, textAlign: 'left' }}>Data</th>
-              <th style={{ padding: 12 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.map(run => (
-              <tr key={run._id} data-testid={`run-row-${run._id}`}>
-                <td style={{ padding: 12, fontFamily: 'monospace' }}>{run._id.slice(-8)}</td>
-                <td style={{ padding: 12 }}>{run.status}</td>
-                <td style={{ padding: 12 }}>{run.durationMs ? `${(run.durationMs / 1000).toFixed(1)}s` : '-'}</td>
-                <td style={{ padding: 12 }}>{new Date(run.createdAt).toLocaleString('pt-BR')}</td>
-                <td style={{ padding: 12 }}><Link to={`/history/${run._id}`}>Detalhes</Link></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <section className="surface">
+          <div className="table-shell">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Status</th>
+                  <th>Duração</th>
+                  <th>Data</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map(run => (
+                  <tr key={run._id} data-testid={`run-row-${run._id}`}>
+                    <td className="table-id">{shortId(run._id)}</td>
+                    <td><StatusBadge status={run.status} /></td>
+                    <td>{formatDuration(run.durationMs)}</td>
+                    <td>{formatDateTimeBR(run.createdAt)}</td>
+                    <td><Link to={`/history/${run._id}`} className="button-link button-secondary">Detalhes</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   )

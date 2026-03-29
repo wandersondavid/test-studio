@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../services/api'
 import type { TestSuite } from '@test-studio/shared-types'
+import { PageHeader } from '../components/ui/PageHeader'
 
 export function SuitesPage() {
   const [suites, setSuites] = useState<TestSuite[]>([])
@@ -25,35 +26,58 @@ export function SuitesPage() {
     load()
   }
 
-  if (loading) return <p data-testid="loading">Carregando...</p>
+  if (loading) return <div className="loading-state" data-testid="loading">Carregando...</div>
 
   return (
-    <div data-testid="suites-page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Suítes</h1>
-        <button data-testid="btn-new-suite" onClick={() => setShowForm(!showForm)}>+ Nova suíte</button>
-      </div>
+    <div data-testid="suites-page" className="page-shell">
+      <PageHeader
+        eyebrow="Organização"
+        title="Suítes"
+        description="Agrupe cenários por fluxo de negócio e mantenha o catálogo de testes mais fácil de navegar."
+        actions={
+          <button className="button-primary" data-testid="btn-new-suite" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Fechar formulário' : '+ Nova suíte'}
+          </button>
+        }
+        meta={
+          <>
+            <span className="meta-chip">{suites.length} suítes</span>
+            <span className="meta-chip accent">Base para o builder</span>
+          </>
+        }
+      />
 
       {showForm && (
-        <form data-testid="suite-form" onSubmit={handleCreate} style={{ marginBottom: 16 }}>
-          <input
-            data-testid="input-suite-name"
-            placeholder="Nome da suíte"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            required
-          />
-          <button data-testid="btn-save-suite" type="submit" style={{ marginLeft: 8 }}>Salvar</button>
+        <form data-testid="suite-form" onSubmit={handleCreate} className="surface inline-form">
+          <div className="field-grid">
+            <label className="field">
+              <span className="field-label">Nome da suíte</span>
+              <input
+                data-testid="input-suite-name"
+                placeholder="Ex: Fluxo de autenticação"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+              />
+            </label>
+          </div>
+          <div className="form-actions">
+            <button className="button-primary" data-testid="btn-save-suite" type="submit">Salvar</button>
+          </div>
         </form>
       )}
 
       {suites.length === 0 ? (
-        <p data-testid="empty">Nenhuma suíte criada.</p>
+        <div className="empty-state" data-testid="empty">Nenhuma suíte criada.</div>
       ) : (
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+        <ul className="list-stack" style={{ padding: 0 }}>
           {suites.map(suite => (
-            <li key={suite._id} data-testid={`suite-item-${suite._id}`} style={{ background: '#fff', padding: 16, marginBottom: 8, borderRadius: 8 }}>
-              <Link to={`/suites/${suite._id}`}><strong>{suite.name}</strong></Link>
+            <li key={suite._id} data-testid={`suite-item-${suite._id}`} className="list-card">
+              <div>
+                <strong>{suite.name}</strong>
+                <div className="list-card-meta">Abra a suíte para criar cenários e organizar steps.</div>
+              </div>
+              <Link to={`/suites/${suite._id}`} className="button-link button-secondary">Abrir</Link>
             </li>
           ))}
         </ul>

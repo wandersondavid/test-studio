@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../services/api'
 import type { Environment, TestCase, TestStep, StepType } from '@test-studio/shared-types'
+import { PageHeader } from '../components/ui/PageHeader'
 
 type RecorderAction = 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
 
@@ -480,8 +481,8 @@ export function CaseBuilderPage() {
     }
   }
 
-  if (loading) return <p data-testid="loading">Carregando...</p>
-  if (!testCase) return <p data-testid="not-found">Cenário não encontrado</p>
+  if (loading) return <div className="loading-state" data-testid="loading">Carregando...</div>
+  if (!testCase) return <div className="empty-state" data-testid="not-found">Cenário não encontrado</div>
 
   const selectedEnvironment = environments.find(environment => environment._id === recorderEnvironmentId)
   const recorderPreviewSrc = recorderSessionId
@@ -489,73 +490,67 @@ export function CaseBuilderPage() {
     : null
 
   return (
-    <div data-testid="case-builder-page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 16 }}>
-        <div>
-          <h1 style={{ marginBottom: 8 }}>{testCase.name}</h1>
-          <p style={{ margin: 0, color: '#666' }}>
-            Monte steps manualmente ou grave interações reais em uma sessão Playwright.
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {saving && <span style={{ color: '#888' }}>Salvando...</span>}
-          <button data-testid="btn-toggle-recorder" onClick={() => setShowRecorder(current => !current)}>
-            {showRecorder ? 'Ocultar gravador' : 'Gravar cenário'}
-          </button>
-        </div>
-      </div>
+    <div data-testid="case-builder-page" className="page-shell">
+      <PageHeader
+        eyebrow="Builder visual"
+        title={testCase.name}
+        description="Monte steps manualmente ou grave interações reais em uma sessão Playwright sem sair do workspace."
+        actions={
+          <>
+            <button className="button-secondary" data-testid="btn-toggle-recorder" onClick={() => setShowRecorder(current => !current)}>
+              {showRecorder ? 'Ocultar gravador' : 'Gravar cenário'}
+            </button>
+            <button
+              className={showAddForm ? 'button-secondary' : 'button-primary'}
+              data-testid="btn-open-add-step-header"
+              onClick={() => setShowAddForm(current => !current)}
+            >
+              {showAddForm ? 'Fechar editor' : '+ Adicionar step'}
+            </button>
+          </>
+        }
+        meta={
+          <>
+            <span className="meta-chip">{steps.length} steps</span>
+            <span className="meta-chip accent">{recorderSessionId ? 'Recorder ativo' : 'Modo manual'}</span>
+            {saving && <span className="meta-chip">Salvando...</span>}
+          </>
+        }
+      />
 
       {error && (
-        <p
-          style={{
-            color: '#b42318',
-            background: '#fef3f2',
-            padding: 12,
-            borderRadius: 8,
-          }}
-          data-testid="builder-error"
-        >
+        <div className="alert alert-error" data-testid="builder-error">
           {error}
-        </p>
+        </div>
       )}
 
       {showRecorder && (
-        <section
-          data-testid="recorder-panel"
-          style={{
-            background: '#fff',
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 24,
-            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', marginBottom: 16 }}>
+        <section data-testid="recorder-panel" className="surface recorder-shell">
+          <div className="section-heading">
             <div>
-              <h2 style={{ margin: '0 0 8px' }}>Modo gravar com Playwright</h2>
-              <p style={{ margin: 0, color: '#555', maxWidth: 760 }}>
+              <h2>Modo gravar com Playwright</h2>
+              <p>
                 O builder cria uma sessão real no runner, tira screenshots da página e executa a ação escolhida quando você
                 clica no preview. Cada interação vira step automaticamente.
               </p>
             </div>
-            <div style={{ minWidth: 280, textAlign: 'right' }}>
-              <div style={{ fontSize: 12, color: recorderActive ? '#027a48' : '#b54708', marginBottom: 4 }}>
+            <div className="toolbar-inline">
+              <span className={`meta-chip${recorderActive ? ' accent' : ''}`}>
                 {recorderBusy ? 'Executando ação no browser...' : recorderActive ? 'Sessão Playwright ativa' : 'Sessão ainda não iniciada'}
-              </div>
-              <code style={{ fontSize: 12, color: '#475467' }}>{currentPreviewUrl}</code>
+              </span>
+              <code>{currentPreviewUrl}</code>
             </div>
           </div>
 
           {loadingEnvironments ? (
-            <p>Carregando ambientes...</p>
+            <div className="loading-state">Carregando ambientes...</div>
           ) : environments.length === 0 ? (
-            <p style={{ margin: 0 }}>Cadastre pelo menos um ambiente para usar o gravador.</p>
+            <div className="empty-state">Cadastre pelo menos um ambiente para usar o gravador.</div>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
-                <div>
-                  <label>Ambiente</label>
-                  <br />
+              <div className="field-grid">
+                <label className="field">
+                  <span className="field-label">Ambiente</span>
                   <select
                     data-testid="select-recorder-environment"
                     value={recorderEnvironmentId}
@@ -568,42 +563,41 @@ export function CaseBuilderPage() {
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
 
-                <div style={{ minWidth: 280 }}>
-                  <label>Path inicial</label>
-                  <br />
+                <label className="field">
+                  <span className="field-label">Path inicial</span>
                   <input
                     data-testid="input-recorder-path"
                     placeholder="/login"
                     value={recorderPath}
                     onChange={event => setRecorderPath(event.target.value)}
-                    style={{ width: '100%' }}
                     disabled={recorderBusy}
                   />
-                </div>
+                </label>
+              </div>
 
-                <button data-testid="btn-start-recorder" onClick={handleStartRecorder} disabled={recorderBusy}>
+              <div className="form-actions">
+                <button className="button-primary" data-testid="btn-start-recorder" onClick={handleStartRecorder} disabled={recorderBusy}>
                   {recorderSessionId ? 'Reiniciar sessão' : 'Iniciar gravação'}
                 </button>
 
-                <button data-testid="btn-navigate-recorder" onClick={handleOpenPath} disabled={!recorderSessionId || recorderBusy}>
+                <button className="button-secondary" data-testid="btn-navigate-recorder" onClick={handleOpenPath} disabled={!recorderSessionId || recorderBusy}>
                   Abrir path
                 </button>
 
-                <button data-testid="btn-reload-recorder" onClick={handleRefreshRecorder} disabled={!recorderSessionId || recorderBusy}>
+                <button className="button-secondary" data-testid="btn-reload-recorder" onClick={handleRefreshRecorder} disabled={!recorderSessionId || recorderBusy}>
                   Atualizar screenshot
                 </button>
 
-                <button data-testid="btn-stop-recorder" onClick={handleStopRecorder} disabled={!recorderSessionId || recorderBusy}>
+                <button className="button-danger" data-testid="btn-stop-recorder" onClick={handleStopRecorder} disabled={!recorderSessionId || recorderBusy}>
                   Encerrar
                 </button>
               </div>
 
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
-                <div>
-                  <label>Ação ao clicar no preview</label>
-                  <br />
+              <div className="field-grid">
+                <label className="field">
+                  <span className="field-label">Ação ao clicar no preview</span>
                   <select
                     data-testid="select-recorder-action"
                     value={recorderAction}
@@ -616,75 +610,55 @@ export function CaseBuilderPage() {
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
 
                 {(actionNeedsValue(recorderAction) || recorderAction === 'assertText') && (
-                  <div style={{ minWidth: 280 }}>
-                    <label>{actionInputLabel(recorderAction)}</label>
-                    <br />
+                  <label className="field">
+                    <span className="field-label">{actionInputLabel(recorderAction)}</span>
                     <input
                       data-testid="input-recorder-action-value"
                       placeholder={actionInputPlaceholder(recorderAction)}
                       value={recorderActionValue}
                       onChange={event => setRecorderActionValue(event.target.value)}
-                      style={{ width: '100%' }}
                       disabled={recorderBusy}
                     />
-                  </div>
+                  </label>
                 )}
               </div>
 
-              <div
-                style={{
-                  marginBottom: 16,
-                  padding: 12,
-                  borderRadius: 10,
-                  background: '#f8fafc',
-                  color: '#475467',
-                }}
-              >
-                <strong style={{ color: '#101828' }}>Como usar:</strong> inicie a sessão, escolha a ação e clique na imagem da
+              <div className="alert alert-info">
+                <strong>Como usar:</strong> inicie a sessão, escolha a ação e clique na imagem da
                 página para executar no browser do Playwright. O builder grava <code>visit</code>, <code>click</code>,{' '}
                 <code>fill</code>, <code>select</code>, <code>check</code>, <code>assertVisible</code>, <code>assertText</code> e{' '}
                 <code>waitForURL</code>.
-                <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ marginTop: 8 }}>
                   Para preencher, selecione <code>Preencher</code>, informe o texto no campo acima e clique no input do preview.
                   O preview nao aceita digitacao direta porque ele e uma imagem da sessao.
                 </div>
-                <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ marginTop: 8 }}>
                   Ambiente atual: <code>{selectedEnvironment?.baseURL ?? 'não selecionado'}</code>
                 </div>
-                <div style={{ marginTop: 6 }}>
+                <div className="muted" style={{ marginTop: 8 }}>
                   Status: <strong>{recorderStatus}</strong>
                 </div>
                 {pageTitle && (
-                  <div style={{ marginTop: 6 }}>
+                  <div className="muted" style={{ marginTop: 8 }}>
                     Título da página: <code>{pageTitle}</code>
                   </div>
                 )}
                 {lastCapturedSelector && (
-                  <div style={{ marginTop: 6 }}>
+                  <div className="muted" style={{ marginTop: 8 }}>
                     Último seletor capturado: <code>{lastCapturedSelector}</code>
                   </div>
                 )}
                 {recorderViewport && (
-                  <div style={{ marginTop: 6 }}>
+                  <div className="muted" style={{ marginTop: 8 }}>
                     Viewport da sessão: <code>{recorderViewport.width}x{recorderViewport.height}</code>
                   </div>
                 )}
               </div>
 
-              <div
-                style={{
-                  border: '1px solid #d0d5dd',
-                  borderRadius: 16,
-                  background: '#f8fafc',
-                  minHeight: 720,
-                  display: 'grid',
-                  placeItems: 'center',
-                  overflow: 'hidden',
-                }}
-              >
+              <div className="recorder-preview">
                 {recorderPreviewSrc ? (
                   <img
                     ref={previewImageRef}
@@ -693,15 +667,10 @@ export function CaseBuilderPage() {
                     data-testid="recorder-preview-image"
                     onClick={handlePreviewClick}
                     onError={() => setError('Não foi possível carregar o screenshot do recorder. Atualize a sessão e tente novamente.')}
-                    style={{
-                      width: '100%',
-                      display: 'block',
-                      cursor: recorderBusy ? 'progress' : 'crosshair',
-                      userSelect: 'none',
-                    }}
+                    style={{ cursor: recorderBusy ? 'progress' : 'crosshair', userSelect: 'none' }}
                   />
                 ) : (
-                  <div style={{ padding: 32, textAlign: 'center', color: '#667085' }}>
+                  <div className="empty-state">
                     <p style={{ fontSize: 18, marginBottom: 8 }}>Nenhuma sessão ativa.</p>
                     <p style={{ margin: 0 }}>
                       Clique em <strong>Iniciar gravação</strong> para abrir a página em uma sessão real do Playwright.
@@ -714,94 +683,117 @@ export function CaseBuilderPage() {
         </section>
       )}
 
-      <ol style={{ paddingLeft: 0, margin: 0 }}>
-        {steps.map((step, index) => (
-          <li
-            key={step.id}
-            data-testid={`step-item-${step.id}`}
-            style={{
-              marginBottom: 8,
-              background: '#fff',
-              padding: 12,
-              borderRadius: 8,
-              listStyle: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <span style={{ flex: 1 }}>
-              {index + 1}. {describeStep(step)}
-            </span>
-            <button data-testid={`btn-up-${step.id}`} onClick={() => moveStep(index, -1)} disabled={index === 0}>
-              ↑
-            </button>
-            <button data-testid={`btn-down-${step.id}`} onClick={() => moveStep(index, 1)} disabled={index === steps.length - 1}>
-              ↓
-            </button>
-            <button data-testid={`btn-remove-${step.id}`} onClick={() => handleRemoveStep(step.id)} style={{ color: 'red' }}>
-              ✕
-            </button>
-          </li>
-        ))}
-      </ol>
-
-      {showAddForm ? (
-        <div data-testid="add-step-form" style={{ background: '#fff', padding: 16, borderRadius: 8, marginTop: 16 }}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div>
-              <label>Tipo</label>
-              <br />
-              <select
-                data-testid="select-step-type"
-                value={newStep.type}
-                onChange={event => setNewStep(current => ({ ...current, type: event.target.value as StepType }))}
-              >
-                {STEP_TYPES.map(type => (
-                  <option key={type} value={type}>
-                    {STEP_LABELS[type]}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {stepNeedsSelector(newStep.type ?? 'click') && (
-              <div>
-                <label>Seletor CSS</label>
-                <br />
-                <input
-                  data-testid="input-step-selector"
-                  placeholder='[data-testid="meu-elemento"]'
-                  value={newStep.selector ?? ''}
-                  onChange={event => setNewStep(current => ({ ...current, selector: event.target.value }))}
-                />
-              </div>
-            )}
-
-            {stepNeedsValue(newStep.type ?? 'click') && (
-              <div>
-                <label>Valor</label>
-                <br />
-                <input
-                  data-testid="input-step-value"
-                  placeholder='valor ou {{variavel}}'
-                  value={newStep.value ?? ''}
-                  onChange={event => setNewStep(current => ({ ...current, value: event.target.value }))}
-                />
-              </div>
-            )}
-
-            <button data-testid="btn-confirm-add-step" onClick={handleAddManualStep}>
-              Adicionar
-            </button>
-            <button onClick={() => setShowAddForm(false)}>Cancelar</button>
+      <section className="surface">
+        <div className="section-heading">
+          <div>
+            <h2>Sequência de steps</h2>
+            <p>Revise, reordene e remova etapas antes de executar o cenário.</p>
           </div>
         </div>
-      ) : (
-        <button data-testid="btn-add-step" onClick={() => setShowAddForm(true)} style={{ marginTop: 16 }}>
-          + Adicionar step
-        </button>
-      )}
+
+        <ol className="step-list">
+          {steps.map((step, index) => (
+            <li key={step.id} data-testid={`step-item-${step.id}`}>
+              <div className="step-card">
+                <div className="step-card-main">
+                  <div className="step-card-index">Step {index + 1}</div>
+                  <div className="step-card-text">{describeStep(step)}</div>
+                </div>
+                <div className="step-actions">
+                  <button
+                    className="button-secondary"
+                    data-testid={`btn-up-${step.id}`}
+                    onClick={() => moveStep(index, -1)}
+                    disabled={index === 0}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="button-secondary"
+                    data-testid={`btn-down-${step.id}`}
+                    onClick={() => moveStep(index, 1)}
+                    disabled={index === steps.length - 1}
+                  >
+                    ↓
+                  </button>
+                  <button
+                    className="button-danger"
+                    data-testid={`btn-remove-${step.id}`}
+                    onClick={() => handleRemoveStep(step.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        {showAddForm ? (
+          <div data-testid="add-step-form" className="surface surface-muted">
+            <div className="section-heading">
+              <div>
+                <h3>Novo step manual</h3>
+                <p>Complete apenas os campos necessários para a ação escolhida.</p>
+              </div>
+            </div>
+
+            <div className="field-grid">
+              <label className="field">
+                <span className="field-label">Tipo</span>
+                <select
+                  data-testid="select-step-type"
+                  value={newStep.type}
+                  onChange={event => setNewStep(current => ({ ...current, type: event.target.value as StepType }))}
+                >
+                  {STEP_TYPES.map(type => (
+                    <option key={type} value={type}>
+                      {STEP_LABELS[type]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {stepNeedsSelector(newStep.type ?? 'click') && (
+                <label className="field">
+                  <span className="field-label">Seletor CSS</span>
+                  <input
+                    data-testid="input-step-selector"
+                    placeholder='[data-testid="meu-elemento"]'
+                    value={newStep.selector ?? ''}
+                    onChange={event => setNewStep(current => ({ ...current, selector: event.target.value }))}
+                  />
+                </label>
+              )}
+
+              {stepNeedsValue(newStep.type ?? 'click') && (
+                <label className="field">
+                  <span className="field-label">Valor</span>
+                  <input
+                    data-testid="input-step-value"
+                    placeholder='valor ou {{variavel}}'
+                    value={newStep.value ?? ''}
+                    onChange={event => setNewStep(current => ({ ...current, value: event.target.value }))}
+                  />
+                </label>
+              )}
+            </div>
+
+            <div className="form-actions">
+              <button className="button-primary" data-testid="btn-confirm-add-step" onClick={handleAddManualStep}>
+                Adicionar
+              </button>
+              <button className="button-secondary" onClick={() => setShowAddForm(false)}>Cancelar</button>
+            </div>
+          </div>
+        ) : (
+          <div className="form-actions" style={{ marginTop: 18 }}>
+            <button className="button-secondary" data-testid="btn-add-step" onClick={() => setShowAddForm(true)}>
+              + Adicionar step
+            </button>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
