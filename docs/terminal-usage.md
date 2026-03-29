@@ -1,6 +1,6 @@
 # Execucao via Terminal
 
-O projeto agora aceita disparo de cenarios sem abrir o frontend.
+O projeto agora aceita disparo e acompanhamento de cenarios sem abrir o frontend.
 
 ## Comando base
 
@@ -28,6 +28,27 @@ npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN"
 npm run test-studio -- run --environment "LOCAL DEV" --all
 ```
 
+## Executar e acompanhar no terminal
+
+```bash
+npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --wait
+npm run test-studio -- run --environment "LOCAL DEV" --all --wait
+```
+
+Com `--wait`, o CLI continua no terminal ate os runs terminarem e mostra:
+
+- mudancas de status
+- duracao
+- quantidade de steps
+- resumo final
+- principais erros quando houver falha
+
+## Acompanhar um run ja criado
+
+```bash
+npm run test-studio -- watch --run 69c98087358333cb542439c5
+```
+
 ## Executar com dataset
 
 ```bash
@@ -45,3 +66,4 @@ TEST_STUDIO_API_URL=http://localhost:3001 npm run test-studio -- run --environme
 - O CLI usa a API do Test Studio.
 - Cada execucao cria um novo run em `/test-runs/execute`.
 - O runner continua processando de forma assincrona, igual ao frontend.
+- Use `--wait` quando quiser ver se deu certo direto no terminal.
