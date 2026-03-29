@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../services/api'
 import type { AuditEntry, Environment, ReusableBlock, StepRetryConfig, TestCase, TestStep, StepType } from '@test-studio/shared-types'
@@ -20,6 +20,7 @@ interface RecorderTarget {
   selector: string
   description?: string
   autoAction?: 'click' | 'fill' | 'select' | 'check'
+  inputType?: string
 }
 
 interface RecorderPendingInput {
@@ -27,6 +28,7 @@ interface RecorderPendingInput {
   description?: string
   value: string
   action: 'fill' | 'select'
+  inputType?: string
 }
 
 interface RecorderSessionResponse {
@@ -43,6 +45,11 @@ interface StepTimingDraft {
   timeoutSeconds: string
   retryAttempts: string
   retryIntervalSeconds: string
+}
+
+interface RecorderOverlayPosition {
+  x: number
+  y: number
 }
 
 interface RetryPreset {
@@ -142,13 +149,34 @@ function actionInputPlaceholder(action: RecorderAction): string {
 function describeStep(step: TestStep): string {
   const label = STEP_LABELS[step.type]
   const timingSummary = describeStepTiming(step)
+  const maskedValue = shouldMaskStepValue(step) ? maskSensitiveValue(step.value) : step.value
 
-  if (step.selector && step.value) return `${label}: ${step.selector} → "${step.value}"${timingSummary}`
+  if (step.selector && maskedValue) return `${label}: ${step.selector} → "${maskedValue}"${timingSummary}`
   if (step.selector) return `${label}: ${step.selector}${timingSummary}`
-  if (step.value) return `${label}: ${step.value}${timingSummary}`
+  if (maskedValue) return `${label}: ${maskedValue}${timingSummary}`
   if (step.description) return `${label}: ${step.description}${timingSummary}`
 
   return `${label}${timingSummary}`
+}
+
+function isSensitiveFieldIdentifier(value?: string): boolean {
+  if (!value) return false
+  return /(password|senha|current-password|new-password)/i.test(value)
+}
+
+function shouldMaskStepValue(step: TestStep): boolean {
+  if (step.type !== 'fill') return false
+  return isSensitiveFieldIdentifier(step.selector) || isSensitiveFieldIdentifier(step.description)
+}
+
+function maskSensitiveValue(value?: string): string | undefined {
+  if (!value) return value
+  return '••••••••'
+}
+
+function isSensitivePendingInput(input: RecorderPendingInput | null): boolean {
+  if (!input) return false
+  return input.inputType === 'password' || isSensitiveFieldIdentifier(input.selector) || isSensitiveFieldIdentifier(input.description)
 }
 
 function normalizeRecorderPath(rawPath: string, environment?: Environment): string {
@@ -331,6 +359,8 @@ export function CaseBuilderPage() {
   const [recorderActionValue, setRecorderActionValue] = useState('')
   const [pendingAutoInput, setPendingAutoInput] = useState<RecorderPendingInput | null>(null)
   const [autoInputDraft, setAutoInputDraft] = useState('')
+  const [showSensitiveAutoInput, setShowSensitiveAutoInput] = useState(false)
+  const [recorderOverlayPosition, setRecorderOverlayPosition] = useState<RecorderOverlayPosition | null>(null)
   const [recorderStatus, setRecorderStatus] = useState('Pronto para iniciar.')
   const [currentPreviewUrl, setCurrentPreviewUrl] = useState('/')
   const [pageTitle, setPageTitle] = useState('')
@@ -338,9 +368,18 @@ export function CaseBuilderPage() {
 
   const stepsRef = useRef<TestStep[]>([])
   const previewImageRef = useRef<HTMLImageElement | null>(null)
+  const previewFrameRef = useRef<HTMLDivElement | null>(null)
+  const recorderOverlayRef = useRef<HTMLDivElement | null>(null)
   const recorderSessionRef = useRef<string | null>(null)
   const recorderScreenshotUrlRef = useRef<string | null>(null)
   const autoInputRef = useRef<HTMLInputElement | null>(null)
+  const recorderDragStateRef = useRef<{
+    pointerId: number
+    startClientX: number
+    startClientY: number
+    startX: number
+    startY: number
+  } | null>(null)
 
   function revokeRecorderScreenshotUrl() {
     if (recorderScreenshotUrlRef.current) {
@@ -352,6 +391,48 @@ export function CaseBuilderPage() {
   function resetRecorderScreenshot() {
     revokeRecorderScreenshotUrl()
     setRecorderScreenshotUrl(null)
+  }
+
+  function clampRecorderOverlayPosition(next: RecorderOverlayPosition): RecorderOverlayPosition {
+    const container = previewFrameRef.current
+    if (!container) {
+      return next
+    }
+
+    const overlayWidth = recorderOverlayRef.current?.offsetWidth ?? 360
+    const overlayHeight = recorderOverlayRef.current?.offsetHeight ?? 220
+    const margin = 18
+
+    return {
+      x: Math.min(Math.max(next.x, margin), Math.max(margin, container.clientWidth - overlayWidth - margin)),
+      y: Math.min(Math.max(next.y, margin), Math.max(margin, container.clientHeight - overlayHeight - margin)),
+    }
+  }
+
+  function placeRecorderOverlayDefault() {
+    const container = previewFrameRef.current
+    if (!container) {
+      return
+    }
+
+    const overlayWidth = recorderOverlayRef.current?.offsetWidth ?? 360
+    const margin = 18
+
+    setRecorderOverlayPosition(
+      clampRecorderOverlayPosition({
+        x: Math.max(margin, container.clientWidth - overlayWidth - margin),
+        y: margin,
+      })
+    )
+  }
+
+  function placeRecorderOverlayNearPreviewPoint(pointX: number, pointY: number) {
+    setRecorderOverlayPosition(
+      clampRecorderOverlayPosition({
+        x: pointX + 18,
+        y: pointY - 12,
+      })
+    )
   }
 
   useEffect(() => {
@@ -370,10 +451,50 @@ export function CaseBuilderPage() {
 
   useEffect(() => {
     if (pendingAutoInput) {
+      setShowSensitiveAutoInput(false)
       autoInputRef.current?.focus()
       autoInputRef.current?.select()
     }
   }, [pendingAutoInput])
+
+  useEffect(() => {
+    if (showRecorder && recorderSessionId && recorderOverlayPosition === null) {
+      placeRecorderOverlayDefault()
+    }
+  }, [showRecorder, recorderSessionId, recorderOverlayPosition])
+
+  useEffect(() => {
+    function handlePointerMove(event: globalThis.PointerEvent) {
+      const dragState = recorderDragStateRef.current
+      if (!dragState) {
+        return
+      }
+
+      setRecorderOverlayPosition(
+        clampRecorderOverlayPosition({
+          x: dragState.startX + (event.clientX - dragState.startClientX),
+          y: dragState.startY + (event.clientY - dragState.startClientY),
+        })
+      )
+    }
+
+    function handlePointerUp(event: globalThis.PointerEvent) {
+      const dragState = recorderDragStateRef.current
+      if (!dragState || dragState.pointerId !== event.pointerId) {
+        return
+      }
+
+      recorderDragStateRef.current = null
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -751,6 +872,22 @@ export function CaseBuilderPage() {
     }
   }
 
+  function handleRecorderOverlayPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (!recorderOverlayPosition) {
+      return
+    }
+
+    event.preventDefault()
+
+    recorderDragStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: recorderOverlayPosition.x,
+      startY: recorderOverlayPosition.y,
+    }
+  }
+
   async function handleStartRecorder() {
     const environment = environments.find(item => item._id === recorderEnvironmentId)
     if (!environment) {
@@ -779,6 +916,7 @@ export function CaseBuilderPage() {
 
       setRecorderPath(startPath)
       setShowRecorder(true)
+      setRecorderOverlayPosition(null)
       setRecorderStatus('Sessão criada. Use o modo automático para clicar e digitar sem trocar a ação manualmente.')
       setLastCapturedSelector('')
       applyRecorderState(session)
@@ -814,6 +952,7 @@ export function CaseBuilderPage() {
       setRecorderViewport(null)
       setPendingAutoInput(null)
       setAutoInputDraft('')
+      setRecorderOverlayPosition(null)
       setRecorderPreviewError(null)
       resetRecorderScreenshot()
       setRecorderStatus('Gravador pausado.')
@@ -883,10 +1022,12 @@ export function CaseBuilderPage() {
     }
 
     const bounds = image.getBoundingClientRect()
+    const previewPointX = Math.max(0, event.clientX - bounds.left)
+    const previewPointY = Math.max(0, event.clientY - bounds.top)
     const xScale = image.naturalWidth / bounds.width
     const yScale = image.naturalHeight / bounds.height
-    const x = Math.max(0, Math.round((event.clientX - bounds.left) * xScale))
-    const y = Math.max(0, Math.round((event.clientY - bounds.top) * yScale))
+    const x = Math.max(0, Math.round(previewPointX * xScale))
+    const y = Math.max(0, Math.round(previewPointY * yScale))
 
     setRecorderBusy(true)
     setError(null)
@@ -920,6 +1061,7 @@ export function CaseBuilderPage() {
       setLastCapturedSelector(session.target?.selector ?? '')
 
       if (recorderMode === 'auto' && session.pendingInput) {
+        placeRecorderOverlayNearPreviewPoint(previewPointX, previewPointY)
         setRecorderStatus(
           session.pendingInput.action === 'select'
             ? 'Campo de seleção detectado. Digite o value da option abaixo e pressione Enter ou clique no próximo elemento.'
@@ -940,6 +1082,13 @@ export function CaseBuilderPage() {
   if (!testCase) return <div className="empty-state" data-testid="not-found">Cenário não encontrado</div>
 
   const selectedEnvironment = environments.find(environment => environment._id === recorderEnvironmentId)
+  const sensitiveAutoInput = isSensitivePendingInput(pendingAutoInput)
+  const recorderOverlayStyle = recorderOverlayPosition
+    ? {
+        left: `${recorderOverlayPosition.x}px`,
+        top: `${recorderOverlayPosition.y}px`,
+      }
+    : undefined
 
   return (
     <div data-testid="case-builder-page" className="page-shell">
@@ -1055,116 +1204,6 @@ export function CaseBuilderPage() {
                 </Button>
               </div>
 
-              <div className="space-y-4">
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span className="field-label" style={{ marginBottom: 0 }}>Modo de gravação</span>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button
-                      type="button"
-                      variant={recorderMode === 'auto' ? 'default' : 'outline'}
-                      data-testid="btn-recorder-mode-auto"
-                      onClick={() => setRecorderMode('auto')}
-                      disabled={recorderBusy}
-                    >
-                      Automático
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={recorderMode === 'manual' ? 'default' : 'outline'}
-                      data-testid="btn-recorder-mode-manual"
-                      onClick={() => setRecorderMode('manual')}
-                      disabled={recorderBusy}
-                    >
-                      Manual
-                    </Button>
-                  </div>
-                  <Badge variant={recorderMode === 'auto' ? 'secondary' : 'outline'}>
-                    {recorderMode === 'auto' ? 'Clique e digite sem trocar ação' : 'Controle total da ação'}
-                  </Badge>
-                </div>
-
-                {recorderMode === 'manual' ? (
-                  <div className="field-grid">
-                    <label className="field">
-                      <span className="field-label">Ação ao clicar no preview</span>
-                      <select
-                        data-testid="select-recorder-action"
-                        value={recorderAction}
-                        onChange={event => setRecorderAction(event.target.value as RecorderAction)}
-                        disabled={recorderBusy}
-                      >
-                        {RECORDER_ACTIONS.map(action => (
-                          <option key={action} value={action}>
-                            {RECORDER_ACTION_LABELS[action]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    {(actionNeedsValue(recorderAction) || recorderAction === 'assertText') && (
-                      <label className="field">
-                        <span className="field-label">{actionInputLabel(recorderAction)}</span>
-                        <input
-                          data-testid="input-recorder-action-value"
-                          placeholder={actionInputPlaceholder(recorderAction)}
-                          value={recorderActionValue}
-                          onChange={event => setRecorderActionValue(event.target.value)}
-                          disabled={recorderBusy}
-                        />
-                      </label>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-border/70 bg-background/50 p-4">
-                    <div className="text-sm text-muted-foreground">
-                      No modo automático, o recorder tenta inferir sozinho o que fazer:
-                      clique em botões e links para gravar <code>click</code>, clique em um campo para começar a digitar,
-                      e use o modo manual apenas para asserts ou casos mais específicos.
-                    </div>
-
-                    {pendingAutoInput ? (
-                      <div className="field-grid" style={{ marginTop: 16 }}>
-                        <label className="field">
-                          <span className="field-label">
-                            {pendingAutoInput.action === 'select' ? 'Value da option detectada' : 'Digitando no campo detectado'}
-                          </span>
-                          <input
-                            ref={autoInputRef}
-                            data-testid="input-recorder-auto-value"
-                            placeholder={
-                              pendingAutoInput.action === 'select'
-                                ? 'ex: manager'
-                                : `Digite para preencher ${pendingAutoInput.description ? `"${pendingAutoInput.description}"` : 'o campo selecionado'}`
-                            }
-                            value={autoInputDraft}
-                            onChange={event => setAutoInputDraft(event.target.value)}
-                            onKeyDown={event => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault()
-                                void handleAutoInputSubmit()
-                              }
-                            }}
-                            disabled={recorderBusy}
-                          />
-                        </label>
-
-                        <div className="field">
-                          <span className="field-label">Campo detectado</span>
-                          <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 text-sm text-foreground/90">
-                            <code>{pendingAutoInput.selector}</code>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="muted" style={{ marginTop: 12 }}>
-                        Clique em um input do preview e comece a digitar. O valor sera salvo automaticamente ao pressionar Enter
-                        ou ao clicar no próximo elemento.
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
               <div className="alert alert-info">
                 <strong>Como usar:</strong>{' '}
                 {recorderMode === 'auto'
@@ -1174,13 +1213,11 @@ export function CaseBuilderPage() {
                 <code>select</code>, <code>check</code>, <code>assertVisible</code>, <code>assertText</code> e <code>waitForURL</code>.
                 {recorderMode === 'auto' ? (
                   <div className="muted" style={{ marginTop: 8 }}>
-                    Como o preview é uma imagem da sessão, a digitação é capturada pelo campo automático acima depois que você
-                    clica no input real.
+                    Os controles rápidos agora ficam num painel flutuante sobre o preview, para você não precisar subir e descer a tela.
                   </div>
                 ) : (
                   <div className="muted" style={{ marginTop: 8 }}>
-                    Para preencher, selecione <code>Preencher</code>, informe o texto no campo acima e clique no input do preview.
-                    O preview nao aceita digitacao direta porque ele e uma imagem da sessao.
+                    No modo manual, escolha a ação diretamente no painel flutuante antes de clicar no preview.
                   </div>
                 )}
                 <div className="muted" style={{ marginTop: 8 }}>
@@ -1206,7 +1243,180 @@ export function CaseBuilderPage() {
                 )}
               </div>
 
-              <div className="recorder-preview">
+              <div className="recorder-preview" ref={previewFrameRef}>
+                {recorderSessionId && (
+                  <div
+                    ref={recorderOverlayRef}
+                    className="recorder-overlay"
+                    style={recorderOverlayStyle}
+                    data-testid="recorder-floating-panel"
+                  >
+                    <div className="recorder-overlay-header">
+                      <button
+                        type="button"
+                        className="recorder-overlay-handle"
+                        onPointerDown={handleRecorderOverlayPointerDown}
+                        aria-label="Arrastar painel do recorder"
+                      >
+                        <span className="recorder-overlay-dots" aria-hidden="true">
+                          {Array.from({ length: 6 }).map((_, index) => (
+                            <span key={index} />
+                          ))}
+                        </span>
+                        <span>Painel rápido</span>
+                      </button>
+
+                      <Badge variant={recorderMode === 'auto' ? 'secondary' : 'outline'}>
+                        {recorderMode === 'auto' ? 'Automático' : 'Manual'}
+                      </Badge>
+                    </div>
+
+                    <div className="recorder-overlay-mode-switch">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={recorderMode === 'auto' ? 'default' : 'outline'}
+                        data-testid="btn-recorder-mode-auto"
+                        onClick={() => setRecorderMode('auto')}
+                        disabled={recorderBusy}
+                      >
+                        Automático
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={recorderMode === 'manual' ? 'default' : 'outline'}
+                        data-testid="btn-recorder-mode-manual"
+                        onClick={() => setRecorderMode('manual')}
+                        disabled={recorderBusy}
+                      >
+                        Manual
+                      </Button>
+                    </div>
+
+                    <div className="recorder-overlay-body">
+                      {recorderMode === 'auto' ? (
+                        pendingAutoInput ? (
+                          <>
+                            <label className="field recorder-overlay-field">
+                              <span className="field-label">
+                                {pendingAutoInput.action === 'select' ? 'Value da option' : 'Preencher campo'}
+                                {sensitiveAutoInput && (
+                                  <Badge variant="outline" className="ml-2">Sensível</Badge>
+                                )}
+                              </span>
+                              <div className="recorder-overlay-input-row">
+                                <input
+                                  ref={autoInputRef}
+                                  type={sensitiveAutoInput && !showSensitiveAutoInput ? 'password' : 'text'}
+                                  data-testid="input-recorder-auto-value"
+                                  placeholder={
+                                    pendingAutoInput.action === 'select'
+                                      ? 'ex: manager'
+                                      : pendingAutoInput.description
+                                        ? `Digite para ${pendingAutoInput.description}`
+                                        : 'Digite o valor do campo'
+                                  }
+                                  value={autoInputDraft}
+                                  onChange={event => setAutoInputDraft(event.target.value)}
+                                  onKeyDown={event => {
+                                    if (event.key === 'Enter') {
+                                      event.preventDefault()
+                                      void handleAutoInputSubmit()
+                                    }
+                                  }}
+                                  disabled={recorderBusy}
+                                />
+                                {sensitiveAutoInput && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    data-testid="btn-toggle-sensitive-auto-input"
+                                    onClick={() => setShowSensitiveAutoInput(current => !current)}
+                                    disabled={recorderBusy}
+                                  >
+                                    {showSensitiveAutoInput ? 'Ocultar' : 'Mostrar'}
+                                  </Button>
+                                )}
+                              </div>
+                            </label>
+
+                            <div className="recorder-overlay-selector">
+                              <span className="field-label">Campo detectado</span>
+                              <code>{pendingAutoInput.selector}</code>
+                            </div>
+
+                            <div className="recorder-overlay-actions">
+                              <Button
+                                type="button"
+                                size="sm"
+                                data-testid="btn-recorder-auto-apply"
+                                onClick={() => void handleAutoInputSubmit()}
+                                disabled={recorderBusy}
+                              >
+                                Aplicar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setPendingAutoInput(null)
+                                  setAutoInputDraft('')
+                                  setRecorderStatus('Campo automático cancelado. Continue clicando no preview.')
+                                }}
+                                disabled={recorderBusy}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="recorder-overlay-note">
+                            Clique em um input do preview para abrir o preenchimento aqui. Botões e links seguem sendo gravados automaticamente.
+                          </div>
+                        )
+                      ) : (
+                        <>
+                          <label className="field recorder-overlay-field">
+                            <span className="field-label">Ação manual</span>
+                            <select
+                              data-testid="select-recorder-action"
+                              value={recorderAction}
+                              onChange={event => setRecorderAction(event.target.value as RecorderAction)}
+                              disabled={recorderBusy}
+                            >
+                              {RECORDER_ACTIONS.map(action => (
+                                <option key={action} value={action}>
+                                  {RECORDER_ACTION_LABELS[action]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          {(actionNeedsValue(recorderAction) || recorderAction === 'assertText') && (
+                            <label className="field recorder-overlay-field">
+                              <span className="field-label">{actionInputLabel(recorderAction)}</span>
+                              <input
+                                data-testid="input-recorder-action-value"
+                                placeholder={actionInputPlaceholder(recorderAction)}
+                                value={recorderActionValue}
+                                onChange={event => setRecorderActionValue(event.target.value)}
+                                disabled={recorderBusy}
+                              />
+                            </label>
+                          )}
+
+                          <div className="recorder-overlay-note">
+                            Escolha a ação e clique no preview. Esse modo é melhor para asserts e ajustes finos.
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {recorderScreenshotUrl ? (
                   <img
                     ref={previewImageRef}

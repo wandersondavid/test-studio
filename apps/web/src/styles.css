@@ -655,6 +655,7 @@ code {
 }
 
 .recorder-preview {
+  position: relative;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: var(--radius-lg);
   background: rgba(15, 15, 16, 0.96);
@@ -667,6 +668,116 @@ code {
 .recorder-preview img {
   width: 100%;
   display: block;
+}
+
+.recorder-overlay {
+  position: absolute;
+  z-index: 3;
+  width: min(360px, calc(100% - 32px));
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(18, 18, 20, 0.94), rgba(12, 12, 14, 0.9));
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+}
+
+.recorder-overlay-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recorder-overlay-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 0;
+  cursor: grab;
+  font: inherit;
+}
+
+.recorder-overlay-handle:active {
+  cursor: grabbing;
+}
+
+.recorder-overlay-dots {
+  display: grid;
+  grid-template-columns: repeat(2, 6px);
+  gap: 4px;
+}
+
+.recorder-overlay-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(244, 244, 245, 0.72);
+}
+
+.recorder-overlay-mode-switch {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.recorder-overlay-body {
+  display: grid;
+  gap: 12px;
+}
+
+.recorder-overlay-field {
+  margin: 0;
+}
+
+.recorder-overlay-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.recorder-overlay-input-row input {
+  flex: 1;
+}
+
+.recorder-overlay-selector {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.recorder-overlay-selector code {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  word-break: break-word;
+  color: #f4f4f5;
+}
+
+.recorder-overlay-note {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted-text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.recorder-overlay-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .step-list {

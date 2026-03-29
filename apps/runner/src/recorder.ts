@@ -23,6 +23,7 @@ interface RecorderPendingInput {
   description?: string
   value: string
   action: PendingRecorderAction
+  inputType?: string
 }
 
 interface RecorderSession {
@@ -153,6 +154,7 @@ export async function interactRecorderSession(input: {
             description: target.description,
             value: '',
             action: target.autoAction,
+            inputType: target.inputType,
           }
           break
         case 'check':
@@ -338,6 +340,7 @@ export async function typeIntoRecorderSession(input: {
     selector: pendingInput.selector,
     description: pendingInput.description,
     autoAction: pendingInput.action,
+    inputType: pendingInput.inputType,
   })
 }
 
