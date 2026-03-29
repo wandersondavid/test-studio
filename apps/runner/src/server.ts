@@ -9,6 +9,7 @@ import {
   getRecorderSessionState,
   interactRecorderSession,
   navigateRecorderSession,
+  typeIntoRecorderSession,
 } from './recorder.js'
 import type { Environment, TestCase, Dataset } from '@test-studio/shared-types'
 
@@ -93,7 +94,7 @@ app.post('/recorder/sessions/:id/navigate', requireRecorderAuth, async (req, res
 app.post('/recorder/sessions/:id/interact', requireRecorderAuth, async (req, res) => {
   try {
     const { action, x, y, value } = req.body as {
-      action?: 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
+      action?: 'auto' | 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
       x?: number
       y?: number
       value?: string
@@ -115,6 +116,25 @@ app.post('/recorder/sessions/:id/interact', requireRecorderAuth, async (req, res
     res.json(session)
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao interagir com a sessão.' })
+  }
+})
+
+app.post('/recorder/sessions/:id/type', requireRecorderAuth, async (req, res) => {
+  try {
+    const { value, commit } = req.body as {
+      value?: string
+      commit?: boolean
+    }
+
+    const session = await typeIntoRecorderSession({
+      sessionId: req.params.id,
+      value: value ?? '',
+      commit,
+    })
+
+    res.json(session)
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erro ao digitar na sessão.' })
   }
 })
 

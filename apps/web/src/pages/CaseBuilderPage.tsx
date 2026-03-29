@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { getAuthToken } from '../services/session'
 
 type RecorderAction = 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
+type RecorderMode = 'auto' | 'manual'
 
 interface RecorderViewport {
   width: number
@@ -18,6 +19,14 @@ interface RecorderViewport {
 interface RecorderTarget {
   selector: string
   description?: string
+  autoAction?: 'click' | 'fill' | 'select' | 'check'
+}
+
+interface RecorderPendingInput {
+  selector: string
+  description?: string
+  value: string
+  action: 'fill' | 'select'
 }
 
 interface RecorderSessionResponse {
@@ -27,6 +36,7 @@ interface RecorderSessionResponse {
   viewport: RecorderViewport
   steps: TestStep[]
   target?: RecorderTarget
+  pendingInput?: RecorderPendingInput
 }
 
 interface StepTimingDraft {
@@ -316,8 +326,11 @@ export function CaseBuilderPage() {
   const [recorderScreenshotUrl, setRecorderScreenshotUrl] = useState<string | null>(null)
   const [loadingRecorderScreenshot, setLoadingRecorderScreenshot] = useState(false)
   const [recorderPreviewError, setRecorderPreviewError] = useState<string | null>(null)
+  const [recorderMode, setRecorderMode] = useState<RecorderMode>('auto')
   const [recorderAction, setRecorderAction] = useState<RecorderAction>('click')
   const [recorderActionValue, setRecorderActionValue] = useState('')
+  const [pendingAutoInput, setPendingAutoInput] = useState<RecorderPendingInput | null>(null)
+  const [autoInputDraft, setAutoInputDraft] = useState('')
   const [recorderStatus, setRecorderStatus] = useState('Pronto para iniciar.')
   const [currentPreviewUrl, setCurrentPreviewUrl] = useState('/')
   const [pageTitle, setPageTitle] = useState('')
@@ -327,6 +340,7 @@ export function CaseBuilderPage() {
   const previewImageRef = useRef<HTMLImageElement | null>(null)
   const recorderSessionRef = useRef<string | null>(null)
   const recorderScreenshotUrlRef = useRef<string | null>(null)
+  const autoInputRef = useRef<HTMLInputElement | null>(null)
 
   function revokeRecorderScreenshotUrl() {
     if (recorderScreenshotUrlRef.current) {
@@ -353,6 +367,13 @@ export function CaseBuilderPage() {
       revokeRecorderScreenshotUrl()
     }
   }, [])
+
+  useEffect(() => {
+    if (pendingAutoInput) {
+      autoInputRef.current?.focus()
+      autoInputRef.current?.select()
+    }
+  }, [pendingAutoInput])
 
   useEffect(() => {
     setLoading(true)
@@ -670,8 +691,64 @@ export function CaseBuilderPage() {
     setRecorderViewport(session.viewport)
     setCurrentPreviewUrl(session.currentUrl)
     setPageTitle(session.title)
+    setPendingAutoInput(session.pendingInput ?? null)
+    setAutoInputDraft(session.pendingInput?.value ?? '')
     setRecorderPreviewError(null)
     setScreenshotVersion(version => version + 1)
+  }
+
+  async function commitPendingAutoInputIfNeeded() {
+    if (!recorderSessionRef.current || !pendingAutoInput) {
+      return
+    }
+
+    if (autoInputDraft === pendingAutoInput.value) {
+      return
+    }
+
+    if (pendingAutoInput.action === 'select' && autoInputDraft.trim().length === 0) {
+      return
+    }
+
+    setRecorderStatus(
+      pendingAutoInput.action === 'select'
+        ? 'Aplicando seleção automática antes da próxima ação...'
+        : 'Aplicando preenchimento automático antes da próxima ação...'
+    )
+
+    const session = await runnerRequest<RecorderSessionResponse>(
+      `/recorder/sessions/${recorderSessionRef.current}/type`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          value: autoInputDraft,
+          commit: true,
+        }),
+      }
+    )
+
+    applyRecorderState(session)
+    appendSteps(session.steps)
+    setLastCapturedSelector(session.target?.selector ?? pendingAutoInput.selector)
+  }
+
+  async function handleAutoInputSubmit() {
+    if (!pendingAutoInput) {
+      return
+    }
+
+    setRecorderBusy(true)
+    setError(null)
+
+    try {
+      await commitPendingAutoInputIfNeeded()
+      setRecorderStatus('Valor salvo. Continue clicando na tela para gravar as próximas etapas.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao aplicar o valor automático no recorder.')
+      setRecorderStatus('Não foi possível aplicar o valor automaticamente. Revise o campo e tente novamente.')
+    } finally {
+      setRecorderBusy(false)
+    }
   }
 
   async function handleStartRecorder() {
@@ -702,7 +779,7 @@ export function CaseBuilderPage() {
 
       setRecorderPath(startPath)
       setShowRecorder(true)
-      setRecorderStatus('Sessão criada. Clique no preview para executar a ação selecionada.')
+      setRecorderStatus('Sessão criada. Use o modo automático para clicar e digitar sem trocar a ação manualmente.')
       setLastCapturedSelector('')
       applyRecorderState(session)
       appendSteps(session.steps)
@@ -735,6 +812,8 @@ export function CaseBuilderPage() {
       recorderSessionRef.current = null
       setRecorderActive(false)
       setRecorderViewport(null)
+      setPendingAutoInput(null)
+      setAutoInputDraft('')
       setRecorderPreviewError(null)
       resetRecorderScreenshot()
       setRecorderStatus('Gravador pausado.')
@@ -792,7 +871,7 @@ export function CaseBuilderPage() {
   async function handlePreviewClick(event: MouseEvent<HTMLImageElement>) {
     if (!recorderSessionRef.current || recorderBusy) return
 
-    if (actionNeedsValue(recorderAction) && recorderActionValue.trim().length === 0) {
+    if (recorderMode === 'manual' && actionNeedsValue(recorderAction) && recorderActionValue.trim().length === 0) {
       setError(`Informe um valor antes de usar a ação "${RECORDER_ACTION_LABELS[recorderAction]}".`)
       return
     }
@@ -811,18 +890,27 @@ export function CaseBuilderPage() {
 
     setRecorderBusy(true)
     setError(null)
-    setRecorderStatus(`Executando ação "${RECORDER_ACTION_LABELS[recorderAction]}" no browser...`)
 
     try {
+      if (recorderMode === 'auto') {
+        await commitPendingAutoInputIfNeeded()
+      }
+
+      const action = recorderMode === 'auto' ? 'auto' : recorderAction
+      const statusMessage = recorderMode === 'auto'
+        ? 'Detectando automaticamente a próxima ação no browser...'
+        : `Executando ação "${RECORDER_ACTION_LABELS[recorderAction]}" no browser...`
+      setRecorderStatus(statusMessage)
+
       const session = await runnerRequest<RecorderSessionResponse>(
         `/recorder/sessions/${recorderSessionRef.current}/interact`,
         {
           method: 'POST',
           body: JSON.stringify({
-            action: recorderAction,
+            action,
             x,
             y,
-            value: recorderActionValue.trim() || undefined,
+            value: recorderMode === 'manual' ? recorderActionValue.trim() || undefined : undefined,
           }),
         }
       )
@@ -830,7 +918,16 @@ export function CaseBuilderPage() {
       applyRecorderState(session)
       appendSteps(session.steps)
       setLastCapturedSelector(session.target?.selector ?? '')
-      setRecorderStatus('Ação executada. Clique novamente no preview para continuar gravando.')
+
+      if (recorderMode === 'auto' && session.pendingInput) {
+        setRecorderStatus(
+          session.pendingInput.action === 'select'
+            ? 'Campo de seleção detectado. Digite o value da option abaixo e pressione Enter ou clique no próximo elemento.'
+            : 'Campo detectado. Pode começar a digitar e depois pressionar Enter ou clicar no próximo elemento.'
+        )
+      } else {
+        setRecorderStatus('Ação executada. Continue interagindo com a tela para gravar as próximas etapas.')
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao executar ação no preview.')
       setRecorderStatus('A ação falhou. Ajuste o modo e tente novamente.')
@@ -958,46 +1055,134 @@ export function CaseBuilderPage() {
                 </Button>
               </div>
 
-              <div className="field-grid">
-                <label className="field">
-                  <span className="field-label">Ação ao clicar no preview</span>
-                  <select
-                    data-testid="select-recorder-action"
-                    value={recorderAction}
-                    onChange={event => setRecorderAction(event.target.value as RecorderAction)}
-                    disabled={recorderBusy}
-                  >
-                    {RECORDER_ACTIONS.map(action => (
-                      <option key={action} value={action}>
-                        {RECORDER_ACTION_LABELS[action]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {(actionNeedsValue(recorderAction) || recorderAction === 'assertText') && (
-                  <label className="field">
-                    <span className="field-label">{actionInputLabel(recorderAction)}</span>
-                    <input
-                      data-testid="input-recorder-action-value"
-                      placeholder={actionInputPlaceholder(recorderAction)}
-                      value={recorderActionValue}
-                      onChange={event => setRecorderActionValue(event.target.value)}
+              <div className="space-y-4">
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span className="field-label" style={{ marginBottom: 0 }}>Modo de gravação</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button
+                      type="button"
+                      variant={recorderMode === 'auto' ? 'default' : 'outline'}
+                      data-testid="btn-recorder-mode-auto"
+                      onClick={() => setRecorderMode('auto')}
                       disabled={recorderBusy}
-                    />
-                  </label>
+                    >
+                      Automático
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={recorderMode === 'manual' ? 'default' : 'outline'}
+                      data-testid="btn-recorder-mode-manual"
+                      onClick={() => setRecorderMode('manual')}
+                      disabled={recorderBusy}
+                    >
+                      Manual
+                    </Button>
+                  </div>
+                  <Badge variant={recorderMode === 'auto' ? 'secondary' : 'outline'}>
+                    {recorderMode === 'auto' ? 'Clique e digite sem trocar ação' : 'Controle total da ação'}
+                  </Badge>
+                </div>
+
+                {recorderMode === 'manual' ? (
+                  <div className="field-grid">
+                    <label className="field">
+                      <span className="field-label">Ação ao clicar no preview</span>
+                      <select
+                        data-testid="select-recorder-action"
+                        value={recorderAction}
+                        onChange={event => setRecorderAction(event.target.value as RecorderAction)}
+                        disabled={recorderBusy}
+                      >
+                        {RECORDER_ACTIONS.map(action => (
+                          <option key={action} value={action}>
+                            {RECORDER_ACTION_LABELS[action]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {(actionNeedsValue(recorderAction) || recorderAction === 'assertText') && (
+                      <label className="field">
+                        <span className="field-label">{actionInputLabel(recorderAction)}</span>
+                        <input
+                          data-testid="input-recorder-action-value"
+                          placeholder={actionInputPlaceholder(recorderAction)}
+                          value={recorderActionValue}
+                          onChange={event => setRecorderActionValue(event.target.value)}
+                          disabled={recorderBusy}
+                        />
+                      </label>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-border/70 bg-background/50 p-4">
+                    <div className="text-sm text-muted-foreground">
+                      No modo automático, o recorder tenta inferir sozinho o que fazer:
+                      clique em botões e links para gravar <code>click</code>, clique em um campo para começar a digitar,
+                      e use o modo manual apenas para asserts ou casos mais específicos.
+                    </div>
+
+                    {pendingAutoInput ? (
+                      <div className="field-grid" style={{ marginTop: 16 }}>
+                        <label className="field">
+                          <span className="field-label">
+                            {pendingAutoInput.action === 'select' ? 'Value da option detectada' : 'Digitando no campo detectado'}
+                          </span>
+                          <input
+                            ref={autoInputRef}
+                            data-testid="input-recorder-auto-value"
+                            placeholder={
+                              pendingAutoInput.action === 'select'
+                                ? 'ex: manager'
+                                : `Digite para preencher ${pendingAutoInput.description ? `"${pendingAutoInput.description}"` : 'o campo selecionado'}`
+                            }
+                            value={autoInputDraft}
+                            onChange={event => setAutoInputDraft(event.target.value)}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault()
+                                void handleAutoInputSubmit()
+                              }
+                            }}
+                            disabled={recorderBusy}
+                          />
+                        </label>
+
+                        <div className="field">
+                          <span className="field-label">Campo detectado</span>
+                          <div className="rounded-xl border border-border/70 bg-card/70 px-4 py-3 text-sm text-foreground/90">
+                            <code>{pendingAutoInput.selector}</code>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="muted" style={{ marginTop: 12 }}>
+                        Clique em um input do preview e comece a digitar. O valor sera salvo automaticamente ao pressionar Enter
+                        ou ao clicar no próximo elemento.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
               <div className="alert alert-info">
-                <strong>Como usar:</strong> inicie a sessão, escolha a ação e clique na imagem da
-                página para executar no browser do Playwright. O builder grava <code>visit</code>, <code>click</code>,{' '}
-                <code>fill</code>, <code>select</code>, <code>check</code>, <code>assertVisible</code>, <code>assertText</code> e{' '}
-                <code>waitForURL</code>.
-                <div className="muted" style={{ marginTop: 8 }}>
-                  Para preencher, selecione <code>Preencher</code>, informe o texto no campo acima e clique no input do preview.
-                  O preview nao aceita digitacao direta porque ele e uma imagem da sessao.
-                </div>
+                <strong>Como usar:</strong>{' '}
+                {recorderMode === 'auto'
+                  ? <>inicie a sessão, clique nos elementos do preview e deixe o recorder inferir cliques e preenchimentos automaticamente.</>
+                  : <>inicie a sessão, escolha a ação e clique na imagem da página para executar no browser do Playwright.</>}
+                {' '}O builder grava <code>visit</code>, <code>click</code>, <code>fill</code>,{' '}
+                <code>select</code>, <code>check</code>, <code>assertVisible</code>, <code>assertText</code> e <code>waitForURL</code>.
+                {recorderMode === 'auto' ? (
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Como o preview é uma imagem da sessão, a digitação é capturada pelo campo automático acima depois que você
+                    clica no input real.
+                  </div>
+                ) : (
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Para preencher, selecione <code>Preencher</code>, informe o texto no campo acima e clique no input do preview.
+                    O preview nao aceita digitacao direta porque ele e uma imagem da sessao.
+                  </div>
+                )}
                 <div className="muted" style={{ marginTop: 8 }}>
                   Ambiente atual: <code>{selectedEnvironment?.baseURL ?? 'não selecionado'}</code>
                 </div>

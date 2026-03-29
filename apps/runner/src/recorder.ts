@@ -1,7 +1,8 @@
 import { chromium, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import type { Environment, TestStep } from '@test-studio/shared-types'
 
-type RecorderAction = 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
+type RecorderAction = 'auto' | 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
+type PendingRecorderAction = 'fill' | 'select'
 
 interface RecorderViewport {
   width: number
@@ -13,6 +14,15 @@ interface RecorderTarget {
   description?: string
   text?: string
   tagName?: string
+  inputType?: string
+  autoAction?: 'click' | 'fill' | 'select' | 'check'
+}
+
+interface RecorderPendingInput {
+  selector: string
+  description?: string
+  value: string
+  action: PendingRecorderAction
 }
 
 interface RecorderSession {
@@ -22,6 +32,7 @@ interface RecorderSession {
   context: BrowserContext
   page: Page
   viewport: RecorderViewport
+  pendingInput?: RecorderPendingInput
   cleanupTimer?: NodeJS.Timeout
 }
 
@@ -32,6 +43,7 @@ export interface RecorderSessionState {
   viewport: RecorderViewport
   steps: TestStep[]
   target?: RecorderTarget
+  pendingInput?: RecorderPendingInput
 }
 
 const STEP_TIMEOUT_MS = Number(process.env.STEP_TIMEOUT_MS ?? 10_000)
@@ -131,7 +143,45 @@ export async function interactRecorderSession(input: {
   const steps: TestStep[] = []
 
   switch (input.action) {
+    case 'auto': {
+      switch (target.autoAction) {
+        case 'fill':
+        case 'select':
+          await session.page.locator(target.selector).first().click({ timeout: STEP_TIMEOUT_MS })
+          session.pendingInput = {
+            selector: target.selector,
+            description: target.description,
+            value: '',
+            action: target.autoAction,
+          }
+          break
+        case 'check':
+          session.pendingInput = undefined
+          await session.page.locator(target.selector).first().check({ timeout: STEP_TIMEOUT_MS })
+          steps.push(
+            buildStep({
+              type: 'check',
+              selector: target.selector,
+              description: target.description,
+            })
+          )
+          break
+        default:
+          session.pendingInput = undefined
+          await session.page.mouse.click(input.x, input.y)
+          steps.push(
+            buildStep({
+              type: 'click',
+              selector: target.selector,
+              description: target.description,
+            })
+          )
+          break
+      }
+      break
+    }
     case 'click':
+      session.pendingInput = undefined
       await session.page.mouse.click(input.x, input.y)
       steps.push(
         buildStep({
@@ -142,6 +192,7 @@ export async function interactRecorderSession(input: {
       )
       break
     case 'fill':
+      session.pendingInput = undefined
       ensureActionValue(input.action, input.value)
       await session.page.locator(target.selector).first().fill(input.value, { timeout: STEP_TIMEOUT_MS })
       steps.push(
@@ -154,6 +205,7 @@ export async function interactRecorderSession(input: {
       )
       break
     case 'select':
+      session.pendingInput = undefined
       ensureActionValue(input.action, input.value)
       await session.page.locator(target.selector).first().selectOption(input.value, { timeout: STEP_TIMEOUT_MS })
       steps.push(
@@ -166,6 +218,7 @@ export async function interactRecorderSession(input: {
       )
       break
     case 'check':
+      session.pendingInput = undefined
       await session.page.locator(target.selector).first().check({ timeout: STEP_TIMEOUT_MS })
       steps.push(
         buildStep({
@@ -176,6 +229,7 @@ export async function interactRecorderSession(input: {
       )
       break
     case 'assertVisible':
+      session.pendingInput = undefined
       await expect(session.page.locator(target.selector).first()).toBeVisible({ timeout: STEP_TIMEOUT_MS })
       steps.push(
         buildStep({
@@ -186,6 +240,7 @@ export async function interactRecorderSession(input: {
       )
       break
     case 'assertText': {
+      session.pendingInput = undefined
       const text = input.value?.trim() || target.text?.trim()
       if (!text) {
         throw new Error('Informe um texto esperado ou clique em um elemento que tenha texto visível.')
@@ -219,6 +274,71 @@ export async function interactRecorderSession(input: {
   }
 
   return await buildSessionState(session, steps, target)
+}
+
+export async function typeIntoRecorderSession(input: {
+  sessionId: string
+  value: string
+  commit?: boolean
+}): Promise<RecorderSessionState> {
+  const session = getSession(input.sessionId)
+  touchSession(session)
+
+  if (!session.pendingInput) {
+    throw new Error('Clique em um campo primeiro para digitar no modo automático.')
+  }
+
+  const pendingInput = session.pendingInput
+  const beforeUrl = toDisplayUrl(session.page.url(), session.environment)
+
+  if (pendingInput.action === 'select') {
+    const optionValue = input.value.trim()
+    if (!optionValue) {
+      throw new Error('Informe o value da option antes de concluir a seleção automática.')
+    }
+
+    await session.page.locator(pendingInput.selector).first().selectOption(optionValue, { timeout: STEP_TIMEOUT_MS })
+  } else {
+    await session.page.locator(pendingInput.selector).first().fill(input.value, { timeout: STEP_TIMEOUT_MS })
+  }
+
+  await settlePage(session.page)
+
+  const steps: TestStep[] = []
+
+  session.pendingInput = {
+    ...pendingInput,
+    value: input.value,
+  }
+
+  if (input.commit) {
+    steps.push(
+      buildStep({
+        type: pendingInput.action,
+        selector: pendingInput.selector,
+        value: input.value,
+        description: pendingInput.description,
+      })
+    )
+
+    session.pendingInput = undefined
+  }
+
+  const afterUrl = toDisplayUrl(session.page.url(), session.environment)
+  if (afterUrl !== beforeUrl) {
+    steps.push(
+      buildStep({
+        type: 'waitForURL',
+        value: afterUrl,
+      })
+    )
+  }
+
+  return await buildSessionState(session, steps, {
+    selector: pendingInput.selector,
+    description: pendingInput.description,
+    autoAction: pendingInput.action,
+  })
 }
 
 export async function closeRecorderSession(sessionId: string): Promise<void> {
@@ -304,6 +424,7 @@ async function buildSessionState(
     viewport: session.viewport,
     steps,
     target,
+    pendingInput: session.pendingInput,
   }
 }
 
@@ -382,6 +503,8 @@ async function resolveTarget(page: Page, x: number, y: number, action: RecorderA
 
     function actionSelector(currentAction: string): string {
       switch (currentAction) {
+        case 'auto':
+          return 'input:not([type="hidden"]), textarea, select, button, a, label, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [data-testid]'
         case 'fill':
           return 'input:not([type="hidden"]), textarea, [contenteditable="true"], [contenteditable=""], [contenteditable]'
         case 'select':
@@ -461,13 +584,46 @@ async function resolveTarget(page: Page, x: number, y: number, action: RecorderA
       return null
     }
 
-    const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const targetElement = element
+    const text = (targetElement.textContent ?? '').replace(/\s+/g, ' ').trim()
+    const tagName = targetElement.tagName.toLowerCase()
+    const inputType = targetElement instanceof HTMLInputElement ? targetElement.type.toLowerCase() : undefined
+
+    function resolveAutoAction(): 'click' | 'fill' | 'select' | 'check' {
+      if (targetElement instanceof HTMLSelectElement) {
+        return 'select'
+      }
+
+      if (targetElement instanceof HTMLInputElement && (targetElement.type === 'checkbox' || targetElement.type === 'radio')) {
+        return 'check'
+      }
+
+      if (
+        targetElement instanceof HTMLInputElement ||
+        targetElement instanceof HTMLTextAreaElement ||
+        targetElement.getAttribute('contenteditable') === '' ||
+        targetElement.getAttribute('contenteditable') === 'true'
+      ) {
+        if (targetElement instanceof HTMLInputElement) {
+          const nonTextInputs = ['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'image']
+          if (nonTextInputs.includes(targetElement.type)) {
+            return 'click'
+          }
+        }
+
+        return 'fill'
+      }
+
+      return 'click'
+    }
 
     return {
-      selector: buildSelector(element),
+      selector: buildSelector(targetElement),
       description: text || undefined,
       text: text || undefined,
-      tagName: element.tagName.toLowerCase(),
+      tagName,
+      inputType,
+      autoAction: resolveAutoAction(),
     }
   }, { x, y, action })
 }
