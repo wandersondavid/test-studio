@@ -1,5 +1,5 @@
 import { Schema, model, Document } from 'mongoose'
-import type { StepType } from '@test-studio/shared-types'
+import type { StepType, StepRetryConfig } from '@test-studio/shared-types'
 
 interface ITestStep {
   id: string
@@ -8,7 +8,13 @@ interface ITestStep {
   value?: string
   description?: string
   timeoutMs?: number
+  retry?: StepRetryConfig
 }
+
+const StepRetrySchema = new Schema<StepRetryConfig>({
+  attempts: { type: Number, required: true, min: 2, max: 100 },
+  intervalMs: { type: Number, required: true, min: 250, max: 60 * 60 * 1000 },
+}, { _id: false })
 
 export interface ITestCase extends Document {
   suiteId: string
@@ -24,6 +30,7 @@ const StepSchema = new Schema<ITestStep>({
   value: { type: String },
   description: { type: String },
   timeoutMs: { type: Number },
+  retry: { type: StepRetrySchema },
 }, { _id: false })
 
 const TestCaseSchema = new Schema<ITestCase>({

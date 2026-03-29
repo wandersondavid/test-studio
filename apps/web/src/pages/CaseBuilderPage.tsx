@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../services/api'
-import type { Environment, TestCase, TestStep, StepType } from '@test-studio/shared-types'
+import type { Environment, StepRetryConfig, TestCase, TestStep, StepType } from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -26,6 +26,12 @@ interface RecorderSessionResponse {
   viewport: RecorderViewport
   steps: TestStep[]
   target?: RecorderTarget
+}
+
+interface StepTimingDraft {
+  timeoutSeconds: string
+  retryAttempts: string
+  retryIntervalSeconds: string
 }
 
 const STEP_TYPES: StepType[] = [
@@ -96,13 +102,14 @@ function actionInputPlaceholder(action: RecorderAction): string {
 
 function describeStep(step: TestStep): string {
   const label = STEP_LABELS[step.type]
+  const timingSummary = describeStepTiming(step)
 
-  if (step.selector && step.value) return `${label}: ${step.selector} → "${step.value}"`
-  if (step.selector) return `${label}: ${step.selector}`
-  if (step.value) return `${label}: ${step.value}`
-  if (step.description) return `${label}: ${step.description}`
+  if (step.selector && step.value) return `${label}: ${step.selector} → "${step.value}"${timingSummary}`
+  if (step.selector) return `${label}: ${step.selector}${timingSummary}`
+  if (step.value) return `${label}: ${step.value}${timingSummary}`
+  if (step.description) return `${label}: ${step.description}${timingSummary}`
 
-  return label
+  return `${label}${timingSummary}`
 }
 
 function normalizeRecorderPath(rawPath: string, environment?: Environment): string {
@@ -132,8 +139,87 @@ function isSameStep(left: TestStep | undefined, right: TestStep): boolean {
     left.type === right.type &&
     left.selector === right.selector &&
     left.value === right.value &&
-    left.description === right.description
+    left.description === right.description &&
+    left.timeoutMs === right.timeoutMs &&
+    left.retry?.attempts === right.retry?.attempts &&
+    left.retry?.intervalMs === right.retry?.intervalMs
   )
+}
+
+function formatSeconds(valueMs?: number): string {
+  if (!valueMs || valueMs <= 0) return ''
+
+  const seconds = valueMs / 1000
+  return Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1)
+}
+
+function buildTimingDraft(step?: Partial<TestStep>): StepTimingDraft {
+  return {
+    timeoutSeconds: formatSeconds(step?.timeoutMs),
+    retryAttempts: step?.retry?.attempts ? String(step.retry.attempts) : '',
+    retryIntervalSeconds: formatSeconds(step?.retry?.intervalMs),
+  }
+}
+
+function parsePositiveSeconds(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const parsed = Number(trimmed.replace(',', '.'))
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error('Use apenas valores maiores que zero nos campos de tempo.')
+  }
+
+  return Math.round(parsed * 1000)
+}
+
+function normalizeRetryConfig(attemptsRaw: string, intervalSecondsRaw: string): StepRetryConfig | undefined {
+  const attemptsTrimmed = attemptsRaw.trim()
+  const intervalTrimmed = intervalSecondsRaw.trim()
+
+  if (!attemptsTrimmed && !intervalTrimmed) {
+    return undefined
+  }
+
+  if (!attemptsTrimmed && intervalTrimmed) {
+    throw new Error('Informe a quantidade de tentativas para usar intervalo entre retries.')
+  }
+
+  const attempts = Number(attemptsTrimmed || '1')
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error('Tentativas deve ser um número inteiro maior ou igual a 1.')
+  }
+
+  if (attempts === 1) {
+    if (intervalTrimmed) {
+      throw new Error('Intervalo entre tentativas só faz sentido quando tentativas for maior que 1.')
+    }
+    return undefined
+  }
+
+  const intervalMs = parsePositiveSeconds(intervalTrimmed)
+  if (!intervalMs) {
+    throw new Error('Informe o intervalo entre tentativas quando usar retry.')
+  }
+
+  return {
+    attempts,
+    intervalMs,
+  }
+}
+
+function describeStepTiming(step: TestStep): string {
+  const parts: string[] = []
+
+  if (step.timeoutMs) {
+    parts.push(`timeout ${formatSeconds(step.timeoutMs)}s`)
+  }
+
+  if (step.retry) {
+    parts.push(`retry ${step.retry.attempts}x / ${formatSeconds(step.retry.intervalMs)}s`)
+  }
+
+  return parts.length > 0 ? ` • ${parts.join(' • ')}` : ''
 }
 
 async function runnerRequest<T>(path: string, init?: RequestInit): Promise<T> {
@@ -176,7 +262,10 @@ export function CaseBuilderPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newStep, setNewStep] = useState<Partial<TestStep>>({ type: 'click' })
+  const [newStepTiming, setNewStepTiming] = useState<StepTimingDraft>(() => buildTimingDraft())
   const [showAddForm, setShowAddForm] = useState(false)
+  const [editingStepId, setEditingStepId] = useState<string | null>(null)
+  const [editingTiming, setEditingTiming] = useState<StepTimingDraft>(() => buildTimingDraft())
 
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [showRecorder, setShowRecorder] = useState(false)
@@ -285,16 +374,30 @@ export function CaseBuilderPage() {
   }
 
   function handleAddManualStep() {
+    let timeoutMs: number | undefined
+    let retry: StepRetryConfig | undefined
+
+    try {
+      timeoutMs = parsePositiveSeconds(newStepTiming.timeoutSeconds)
+      retry = normalizeRetryConfig(newStepTiming.retryAttempts, newStepTiming.retryIntervalSeconds)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Configuração de retry inválida.')
+      return
+    }
+
     const step: TestStep = {
       id: crypto.randomUUID(),
       type: newStep.type ?? 'click',
       selector: newStep.selector,
       value: newStep.value,
       description: newStep.description,
+      timeoutMs,
+      retry,
     }
 
     appendStep(step)
     setNewStep({ type: 'click' })
+    setNewStepTiming(buildTimingDraft())
     setShowAddForm(false)
   }
 
@@ -310,6 +413,40 @@ export function CaseBuilderPage() {
     const nextSteps = [...stepsRef.current]
     ;[nextSteps[index], nextSteps[nextIndex]] = [nextSteps[nextIndex], nextSteps[index]]
     replaceSteps(nextSteps)
+  }
+
+  function openStepTimingEditor(step: TestStep) {
+    setEditingStepId(step.id)
+    setEditingTiming(buildTimingDraft(step))
+    setError(null)
+  }
+
+  function handleSaveStepTiming(stepId: string) {
+    let timeoutMs: number | undefined
+    let retry: StepRetryConfig | undefined
+
+    try {
+      timeoutMs = parsePositiveSeconds(editingTiming.timeoutSeconds)
+      retry = normalizeRetryConfig(editingTiming.retryAttempts, editingTiming.retryIntervalSeconds)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Configuração de retry inválida.')
+      return
+    }
+
+    replaceSteps(
+      stepsRef.current.map(step =>
+        step.id === stepId
+          ? {
+              ...step,
+              timeoutMs,
+              retry,
+            }
+          : step
+      )
+    )
+
+    setEditingStepId(null)
+    setEditingTiming(buildTimingDraft())
   }
 
   function applyRecorderState(session: RecorderSessionResponse) {
@@ -708,8 +845,32 @@ export function CaseBuilderPage() {
                   <div className="step-card-main">
                     <div className="step-card-index">Step {index + 1}</div>
                     <div className="step-card-text">{describeStep(step)}</div>
+                    {(step.timeoutMs || step.retry) && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {step.timeoutMs && (
+                          <Badge variant="outline">timeout {formatSeconds(step.timeoutMs)}s</Badge>
+                        )}
+                        {step.retry && (
+                          <Badge variant="secondary">
+                            {step.retry.attempts} tentativas / {formatSeconds(step.retry.intervalMs)}s
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="step-actions">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`btn-config-${step.id}`}
+                      onClick={() =>
+                        editingStepId === step.id
+                          ? setEditingStepId(null)
+                          : openStepTimingEditor(step)
+                      }
+                    >
+                      {editingStepId === step.id ? 'Fechar' : 'Retry'}
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"
@@ -738,6 +899,77 @@ export function CaseBuilderPage() {
                     </Button>
                   </div>
                 </div>
+                {editingStepId === step.id && (
+                  <div className="mt-4 rounded-xl border border-border/70 bg-background/70 p-4">
+                    <div className="mb-3 text-sm text-muted-foreground">
+                      Configure timeout e retry desse step.
+                      Evite retry em cliques destrutivos como <strong>Emitir</strong>; prefira usar isso na etapa de confirmação.
+                    </div>
+
+                    <div className="field-grid">
+                      <label className="field">
+                        <span className="field-label">Timeout por tentativa (segundos)</span>
+                        <input
+                          data-testid={`input-timeout-${step.id}`}
+                          placeholder="10"
+                          value={editingTiming.timeoutSeconds}
+                          onChange={event =>
+                            setEditingTiming(current => ({ ...current, timeoutSeconds: event.target.value }))
+                          }
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">Tentativas totais</span>
+                        <input
+                          data-testid={`input-retry-attempts-${step.id}`}
+                          placeholder="1"
+                          value={editingTiming.retryAttempts}
+                          onChange={event =>
+                            setEditingTiming(current => ({ ...current, retryAttempts: event.target.value }))
+                          }
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span className="field-label">Intervalo entre tentativas (segundos)</span>
+                        <input
+                          data-testid={`input-retry-interval-${step.id}`}
+                          placeholder="10"
+                          value={editingTiming.retryIntervalSeconds}
+                          onChange={event =>
+                            setEditingTiming(current => ({ ...current, retryIntervalSeconds: event.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-3 text-sm text-muted-foreground">
+                      Exemplo: 10 tentativas com intervalo de 10 segundos criam uma janela longa de polling,
+                      somada ao timeout configurado em cada tentativa.
+                    </div>
+
+                    <div className="form-actions" style={{ marginTop: 16 }}>
+                      <Button
+                        size="sm"
+                        data-testid={`btn-save-config-${step.id}`}
+                        onClick={() => handleSaveStepTiming(step.id)}
+                      >
+                        Salvar config
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditingStepId(null)
+                          setEditingTiming(buildTimingDraft())
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ol>
@@ -790,6 +1022,47 @@ export function CaseBuilderPage() {
                     />
                   </label>
                 )}
+
+                <label className="field">
+                  <span className="field-label">Timeout por tentativa (segundos)</span>
+                  <input
+                    data-testid="input-step-timeout"
+                    placeholder="10"
+                    value={newStepTiming.timeoutSeconds}
+                    onChange={event =>
+                      setNewStepTiming(current => ({ ...current, timeoutSeconds: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span className="field-label">Tentativas totais</span>
+                  <input
+                    data-testid="input-step-retry-attempts"
+                    placeholder="1"
+                    value={newStepTiming.retryAttempts}
+                    onChange={event =>
+                      setNewStepTiming(current => ({ ...current, retryAttempts: event.target.value }))
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span className="field-label">Intervalo entre tentativas (segundos)</span>
+                  <input
+                    data-testid="input-step-retry-interval"
+                    placeholder="10"
+                    value={newStepTiming.retryIntervalSeconds}
+                    onChange={event =>
+                      setNewStepTiming(current => ({ ...current, retryIntervalSeconds: event.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="text-sm text-muted-foreground">
+                Use retry para etapas de confirmação assíncrona, como aguardar a carga aparecer na tela.
+                Exemplo: 10 tentativas, intervalo 10s, timeout 3s por tentativa.
               </div>
 
               <div className="form-actions">

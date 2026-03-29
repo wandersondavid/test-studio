@@ -9,6 +9,11 @@ export type StepType =
   | 'assertText'
   | 'assertVisible'
 
+export interface StepRetryConfig {
+  attempts: number
+  intervalMs: number
+}
+
 export interface TestStep {
   id: string
   type: StepType
@@ -16,4 +21,5 @@ export interface TestStep {
   value?: string
   description?: string
   timeoutMs?: number
+  retry?: StepRetryConfig
 }
