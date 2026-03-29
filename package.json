@@ -1,0 +1,21 @@
+{
+  "name": "test-studio",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\" \"npm run dev -w apps/runner\"",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:runner": "npm run dev -w apps/runner",
+    "build": "npm run build -w packages/shared-types && npm run build -w packages/test-compiler && npm run build -w apps/api && npm run build -w apps/runner && npm run build -w apps/web",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}
