@@ -57,6 +57,8 @@ const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_MIN_CHARS = 2
 const SEARCH_RESULT_LIMIT = 5
 const SEARCH_FALLBACK_DESCRIPTION = 'Sem descrição'
+const SEARCH_FALLBACK_CASE_NAME = 'Cenário sem nome'
+const SEARCH_FALLBACK_ENVIRONMENT_LABEL = 'Ambiente removido'
 
 type SearchData = {
   cases: TestCase[]
@@ -93,6 +95,10 @@ function resolveCurrentLabel(pathname: string): string {
   if (pathname.startsWith('/suites/')) return 'Detalhe da suíte'
   if (pathname.startsWith('/history/')) return 'Detalhe da execução'
   return PAGE_LABELS.get(pathname) ?? 'Workspace'
+}
+
+function shouldRefreshCache(cache: SearchCache | null, now: number, lastUpdated: number): boolean {
+  return !cache || now - lastUpdated > SEARCH_CACHE_TTL_MS
 }
 
 function matchesSearchTerm(value: string | undefined, term: string): boolean {
@@ -155,8 +161,8 @@ function buildSearchResults(data: SearchData, index: SearchIndex, term: string):
     })
     .slice(0, SEARCH_RESULT_LIMIT)
     .map(run => {
-      const caseName = caseNameById.get(run.caseId) ?? 'Cenário sem nome'
-      const environmentLabel = environmentLabelById.get(run.environmentId) ?? 'Ambiente removido'
+      const caseName = caseNameById.get(run.caseId) ?? SEARCH_FALLBACK_CASE_NAME
+      const environmentLabel = environmentLabelById.get(run.environmentId) ?? SEARCH_FALLBACK_ENVIRONMENT_LABEL
 
       return {
         id: run._id,
@@ -241,7 +247,7 @@ export function AppShell({ children }: AppShellProps) {
       setSearchError(null)
       try {
         const now = Date.now()
-        const shouldFetch = !searchCacheRef.current || now - searchCacheTimestampRef.current > SEARCH_CACHE_TTL_MS
+        const shouldFetch = shouldRefreshCache(searchCacheRef.current, now, searchCacheTimestampRef.current)
         let resolvedCache = searchCacheRef.current
 
         if (shouldFetch) {
@@ -265,7 +271,9 @@ export function AppShell({ children }: AppShellProps) {
         setSearchOpen(true)
       } catch (error: unknown) {
         if (cancelled) return
-        setSearchError(error instanceof Error ? error.message : 'Erro ao pesquisar')
+        setSearchError(error instanceof Error && error.message
+          ? error.message
+          : 'Erro ao pesquisar. Verifique a conexão.')
       } finally {
         if (!cancelled) {
           setSearchLoading(false)
