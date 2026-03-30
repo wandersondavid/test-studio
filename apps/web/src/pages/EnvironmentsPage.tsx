@@ -148,7 +148,7 @@ export function EnvironmentsPage() {
               </thead>
               <tbody>
                 {environments.map(env => (
-                  <tr key={env._id} data-testid={`env-row-${env._id}`}>
+                  <tr key={env._id} id={`env-${env._id}`} data-testid={`env-row-${env._id}`}>
                     <td>{env.name}</td>
                     <td><code>{env.baseURL}</code></td>
                     <td><span className="meta-chip">{env.type}</span></td>

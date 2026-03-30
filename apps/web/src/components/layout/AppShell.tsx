@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
   Bell,
@@ -16,10 +16,13 @@ import {
   Users,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
+import { api } from '@/services/api'
+import type { Environment, TestCase, TestRun } from '@test-studio/shared-types'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { shortId } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 interface AppShellProps {
@@ -49,11 +52,103 @@ const PAGE_LABELS = new Map<string, string>([
   ['/notification-channels', 'Notificações'],
 ])
 
+const SEARCH_CACHE_TTL_MS = 60_000
+const SEARCH_RESULT_LIMIT = 5
+
+type SearchData = {
+  cases: TestCase[]
+  runs: TestRun[]
+  environments: Environment[]
+}
+
+type SearchItem = {
+  id: string
+  title: string
+  description?: string
+  meta?: string
+  href: string
+}
+
+type SearchResults = {
+  cases: SearchItem[]
+  runs: SearchItem[]
+  environments: SearchItem[]
+}
+
 function resolveCurrentLabel(pathname: string): string {
   if (pathname.startsWith('/cases/')) return 'Builder'
   if (pathname.startsWith('/suites/')) return 'Detalhe da suíte'
   if (pathname.startsWith('/history/')) return 'Detalhe da execução'
   return PAGE_LABELS.get(pathname) ?? 'Workspace'
+}
+
+function matchesSearchTerm(value: string | undefined, term: string): boolean {
+  return Boolean(value && value.toLowerCase().includes(term))
+}
+
+function buildSearchResults(data: SearchData, term: string): SearchResults {
+  const normalizedTerm = term.toLowerCase()
+  const caseNameById = new Map(data.cases.map(testCase => [testCase._id, testCase.name]))
+  const environmentLabelById = new Map(
+    data.environments.map(environment => [environment._id, `${environment.name} (${environment.type})`])
+  )
+
+  const cases = data.cases
+    .filter(testCase => (
+      matchesSearchTerm(testCase.name, normalizedTerm)
+      || matchesSearchTerm(testCase.description, normalizedTerm)
+      || matchesSearchTerm(testCase._id, normalizedTerm)
+    ))
+    .slice(0, SEARCH_RESULT_LIMIT)
+    .map(testCase => ({
+      id: testCase._id,
+      title: testCase.name,
+      description: testCase.description ?? 'Sem descrição',
+      href: `/cases/${testCase._id}`,
+    }))
+
+  const environments = data.environments
+    .filter(environment => (
+      matchesSearchTerm(environment.name, normalizedTerm)
+      || matchesSearchTerm(environment.baseURL, normalizedTerm)
+      || matchesSearchTerm(environment.type, normalizedTerm)
+      || matchesSearchTerm(environment._id, normalizedTerm)
+    ))
+    .slice(0, SEARCH_RESULT_LIMIT)
+    .map(environment => ({
+      id: environment._id,
+      title: environment.name,
+      description: `${environment.baseURL} • ${environment.type.toUpperCase()}`,
+      href: `/environments#env-${environment._id}`,
+    }))
+
+  const runs = data.runs
+    .filter(run => {
+      const caseName = caseNameById.get(run.caseId) ?? ''
+      const environmentLabel = environmentLabelById.get(run.environmentId) ?? ''
+
+      return (
+        matchesSearchTerm(run._id, normalizedTerm)
+        || matchesSearchTerm(run.status, normalizedTerm)
+        || matchesSearchTerm(caseName, normalizedTerm)
+        || matchesSearchTerm(environmentLabel, normalizedTerm)
+      )
+    })
+    .slice(0, SEARCH_RESULT_LIMIT)
+    .map(run => {
+      const caseName = caseNameById.get(run.caseId) ?? 'Cenário sem nome'
+      const environmentLabel = environmentLabelById.get(run.environmentId) ?? 'Ambiente removido'
+
+      return {
+        id: run._id,
+        title: caseName,
+        description: `${environmentLabel} • ${run.status}`,
+        meta: `#${shortId(run._id)}`,
+        href: `/history/${run._id}`,
+      }
+    })
+
+  return { cases, runs, environments }
 }
 
 export function AppShell({ children }: AppShellProps) {
@@ -63,6 +158,103 @@ export function AppShell({ children }: AppShellProps) {
   const navItems = user?.role === 'admin'
     ? [...NAV_ITEMS, { to: '/users', label: 'Usuários', description: 'Acessos e permissões', icon: Users }]
     : NAV_ITEMS
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResults>({ cases: [], runs: [], environments: [] })
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const searchContainerRef = useRef<HTMLDivElement | null>(null)
+  const searchCacheRef = useRef<SearchData | null>(null)
+  const searchCacheTimestampRef = useRef(0)
+
+  const normalizedQuery = searchQuery.trim()
+  const canSearch = normalizedQuery.length >= 2
+  const totalResults = searchResults.cases.length + searchResults.runs.length + searchResults.environments.length
+
+  useEffect(() => {
+    function handleOutsideClick(event: MouseEvent) {
+      if (!searchContainerRef.current || searchContainerRef.current.contains(event.target as Node)) {
+        return
+      }
+      setSearchOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  useEffect(() => {
+    if (!normalizedQuery) {
+      setSearchResults({ cases: [], runs: [], environments: [] })
+      setSearchError(null)
+      setSearchLoading(false)
+      setSearchOpen(false)
+      return
+    }
+
+    if (!canSearch) {
+      setSearchResults({ cases: [], runs: [], environments: [] })
+      setSearchError(null)
+      setSearchLoading(false)
+      return
+    }
+
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      setSearchLoading(true)
+      setSearchError(null)
+      try {
+        const now = Date.now()
+        const shouldFetch = !searchCacheRef.current || now - searchCacheTimestampRef.current > SEARCH_CACHE_TTL_MS
+        let data = searchCacheRef.current
+
+        if (shouldFetch) {
+          const [casesResponse, runsResponse, environmentsResponse] = await Promise.all([
+            api.get<TestCase[]>('/test-cases'),
+            api.get<TestRun[]>('/test-runs'),
+            api.get<Environment[]>('/environments'),
+          ])
+          data = {
+            cases: casesResponse.data,
+            runs: runsResponse.data,
+            environments: environmentsResponse.data,
+          }
+          searchCacheRef.current = data
+          searchCacheTimestampRef.current = now
+        }
+
+        if (cancelled || !data) return
+        setSearchResults(buildSearchResults(data, normalizedQuery))
+        setSearchOpen(true)
+      } catch (error: unknown) {
+        if (cancelled) return
+        setSearchError(error instanceof Error ? error.message : 'Erro ao pesquisar')
+      } finally {
+        if (!cancelled) {
+          setSearchLoading(false)
+        }
+      }
+    }, 250)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [canSearch, normalizedQuery])
+
+  function handleSearchChange(value: string) {
+    setSearchQuery(value)
+    if (!value.trim()) {
+      setSearchOpen(false)
+      return
+    }
+    setSearchOpen(true)
+  }
+
+  function handleSearchSelect() {
+    setSearchQuery('')
+    setSearchOpen(false)
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -151,16 +343,139 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
               </div>
 
-              <label className="relative mx-auto flex w-full max-w-2xl items-center" aria-label="Pesquisar workspace">
-                <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  readOnly
-                  value=""
-                  placeholder="Pesquisar cenários, execuções e ambientes"
-                  className="h-11 rounded-full border-border/80 bg-card/70 pl-10 pr-4"
-                />
-              </label>
+              <div className="relative mx-auto w-full max-w-2xl" data-testid="global-search" ref={searchContainerRef}>
+                <label className="relative flex w-full items-center" aria-label="Pesquisar workspace">
+                  <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={searchQuery}
+                    onChange={event => handleSearchChange(event.target.value)}
+                    onFocus={() => {
+                      if (searchQuery.trim()) {
+                        setSearchOpen(true)
+                      }
+                    }}
+                    onKeyDown={event => {
+                      if (event.key === 'Escape') {
+                        setSearchQuery('')
+                        setSearchOpen(false)
+                      }
+                    }}
+                    placeholder="Pesquisar cenários, execuções e ambientes"
+                    className="h-11 rounded-full border-border/80 bg-card/70 pl-10 pr-4"
+                    aria-expanded={searchOpen}
+                    aria-controls="global-search-results"
+                    aria-haspopup="listbox"
+                    data-testid="global-search-input"
+                  />
+                </label>
+
+                {searchOpen && (
+                  <div
+                    id="global-search-results"
+                    role="listbox"
+                    data-testid="global-search-results"
+                    className="absolute left-0 right-0 z-30 mt-2 overflow-hidden rounded-2xl border border-border/70 bg-card/95 shadow-lg"
+                  >
+                    {searchLoading && (
+                      <div className="px-4 py-3 text-sm text-muted-foreground">Buscando...</div>
+                    )}
+                    {!searchLoading && searchError && (
+                      <div className="px-4 py-3 text-sm text-red-300">{searchError}</div>
+                    )}
+                    {!searchLoading && !searchError && !canSearch && (
+                      <div className="px-4 py-3 text-sm text-muted-foreground">
+                        Digite pelo menos 2 caracteres para buscar.
+                      </div>
+                    )}
+                    {!searchLoading && !searchError && canSearch && totalResults === 0 && (
+                      <div className="px-4 py-3 text-sm text-muted-foreground">
+                        Nenhum resultado encontrado.
+                      </div>
+                    )}
+                    {!searchLoading && !searchError && totalResults > 0 && (
+                      <div className="divide-y divide-border/60">
+                        {searchResults.cases.length > 0 && (
+                          <div className="py-3">
+                            <div className="px-4 text-xs font-semibold uppercase text-muted-foreground">Cenários</div>
+                            <ul className="mt-2 space-y-1">
+                              {searchResults.cases.map(item => (
+                                <li key={item.id}>
+                                  <Link
+                                    to={item.href}
+                                    onClick={handleSearchSelect}
+                                    role="option"
+                                    data-testid={`search-case-${item.id}`}
+                                    className="flex flex-col gap-1 px-4 py-2 text-sm text-foreground transition hover:bg-secondary/60"
+                                  >
+                                    <span className="font-medium">{item.title}</span>
+                                    {item.description && (
+                                      <span className="text-xs text-muted-foreground">{item.description}</span>
+                                    )}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {searchResults.runs.length > 0 && (
+                          <div className="py-3">
+                            <div className="px-4 text-xs font-semibold uppercase text-muted-foreground">Execuções</div>
+                            <ul className="mt-2 space-y-1">
+                              {searchResults.runs.map(item => (
+                                <li key={item.id}>
+                                  <Link
+                                    to={item.href}
+                                    onClick={handleSearchSelect}
+                                    role="option"
+                                    data-testid={`search-run-${item.id}`}
+                                    className="flex flex-col gap-1 px-4 py-2 text-sm text-foreground transition hover:bg-secondary/60"
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium">{item.title}</span>
+                                      {item.meta && (
+                                        <span className="text-xs text-muted-foreground">{item.meta}</span>
+                                      )}
+                                    </div>
+                                    {item.description && (
+                                      <span className="text-xs text-muted-foreground">{item.description}</span>
+                                    )}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {searchResults.environments.length > 0 && (
+                          <div className="py-3">
+                            <div className="px-4 text-xs font-semibold uppercase text-muted-foreground">Ambientes</div>
+                            <ul className="mt-2 space-y-1">
+                              {searchResults.environments.map(item => (
+                                <li key={item.id}>
+                                  <Link
+                                    to={item.href}
+                                    onClick={handleSearchSelect}
+                                    role="option"
+                                    data-testid={`search-environment-${item.id}`}
+                                    className="flex flex-col gap-1 px-4 py-2 text-sm text-foreground transition hover:bg-secondary/60"
+                                  >
+                                    <span className="font-medium">{item.title}</span>
+                                    {item.description && (
+                                      <span className="text-xs text-muted-foreground">{item.description}</span>
+                                    )}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">MVP ativo</Badge>
