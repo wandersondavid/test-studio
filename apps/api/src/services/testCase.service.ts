@@ -11,6 +11,10 @@ export class TestCaseService {
     return TestCase.findById(id)
   }
 
+  async findByIds(ids: string[]): Promise<ITestCase[]> {
+    return TestCase.find({ _id: { $in: ids } }).sort({ createdAt: -1 })
+  }
+
   async create(data: Partial<ITestCase>): Promise<ITestCase> {
     return TestCase.create(data)
   }
@@ -34,8 +38,27 @@ export class TestCaseService {
     return TestCase.findByIdAndUpdate(id, data, { new: true })
   }
 
-  async delete(id: string): Promise<void> {
-    await TestCase.findByIdAndDelete(id)
+  async delete(id: string): Promise<{ deletedIds: string[], clearedSetupRefsCount: number }> {
+    return this.deleteMany([id])
+  }
+
+  async deleteMany(ids: string[]): Promise<{ deletedIds: string[], clearedSetupRefsCount: number }> {
+    const uniqueIds = [...new Set(ids)]
+    if (uniqueIds.length === 0) {
+      return { deletedIds: [], clearedSetupRefsCount: 0 }
+    }
+
+    const clearRefsResult = await TestCase.updateMany(
+      { setupCaseId: { $in: uniqueIds } },
+      { $unset: { setupCaseId: 1 } }
+    )
+
+    await TestCase.deleteMany({ _id: { $in: uniqueIds } })
+
+    return {
+      deletedIds: uniqueIds,
+      clearedSetupRefsCount: clearRefsResult.modifiedCount ?? 0,
+    }
   }
 
   async wouldCreateSetupCycle(caseId: string, candidateSetupId?: string): Promise<boolean> {

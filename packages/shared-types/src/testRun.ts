@@ -13,6 +13,27 @@ export interface StepResult {
   screenshotPath?: string
 }
 
+export interface ConsoleLogEntry {
+  id: string
+  stepId?: string
+  type: 'log' | 'info' | 'warn' | 'error' | 'debug' | 'trace'
+  text: string
+  location?: string
+  timestamp: string
+}
+
+export interface NetworkLogEntry {
+  id: string
+  stepId?: string
+  kind: 'request' | 'response' | 'failed'
+  method?: string
+  url: string
+  resourceType?: string
+  status?: number
+  error?: string
+  timestamp: string
+}
+
 export interface TestRun {
   _id: string
   caseId: string
@@ -23,6 +44,8 @@ export interface TestRun {
   requestedVia?: RunRequestedVia
   sourceRunId?: string
   stepResults: StepResult[]
+  consoleLogs?: ConsoleLogEntry[]
+  networkLogs?: NetworkLogEntry[]
   durationMs?: number
   videoPath?: string
   tracePath?: string

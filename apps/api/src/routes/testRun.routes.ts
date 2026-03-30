@@ -1,3 +1,5 @@
+import fs from 'fs/promises'
+import path from 'path'
 import { Router, Request, Response, NextFunction } from 'express'
 import { TestRunService } from '../services/testRun.service.js'
 import { TestCaseService } from '../services/testCase.service.js'
@@ -13,6 +15,7 @@ const caseService = new TestCaseService()
 const envService = new EnvironmentService()
 const datasetService = new DatasetService()
 const auditLogService = new AuditLogService()
+const artifactsDir = path.resolve(process.env.ARTIFACTS_DIR ?? './artifacts')
 
 export const testRunRouter = Router()
 
@@ -28,6 +31,36 @@ testRunRouter.get('/:id', requireAuth, async (req: Request, res: Response, next:
     if (!item) { res.status(404).json({ error: 'Não encontrado' }); return }
     res.json(item)
   } catch (err) { next(err) }
+})
+
+testRunRouter.get('/:id/steps/:stepId/screenshot', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const item = await runService.findById(req.params.id)
+    if (!item) {
+      res.status(404).json({ error: 'Execução não encontrada.' })
+      return
+    }
+
+    const step = item.stepResults.find(stepResult => stepResult.stepId === req.params.stepId)
+    if (!step?.screenshotPath) {
+      res.status(404).json({ error: 'Screenshot não encontrado para este step.' })
+      return
+    }
+
+    const resolvedScreenshotPath = path.resolve(step.screenshotPath)
+    const insideArtifactsDir = resolvedScreenshotPath === artifactsDir
+      || resolvedScreenshotPath.startsWith(`${artifactsDir}${path.sep}`)
+
+    if (!insideArtifactsDir) {
+      res.status(403).json({ error: 'Arquivo de screenshot fora da área permitida.' })
+      return
+    }
+
+    await fs.access(resolvedScreenshotPath)
+    res.sendFile(resolvedScreenshotPath)
+  } catch (err) {
+    next(err)
+  }
 })
 
 testRunRouter.post('/execute', requireAuth, async (req: Request, res: Response, next: NextFunction) => {

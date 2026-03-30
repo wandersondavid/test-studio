@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express'
 import type { TestStep } from '@test-studio/shared-types'
 import { TestCaseService } from '../services/testCase.service.js'
 import { AuditLogService } from '../services/auditLog.service.js'
-import { createTestCaseSchema, updateTestCaseSchema } from '../schemas/testCase.schema.js'
+import { bulkDeleteTestCasesSchema, createTestCaseSchema, updateTestCaseSchema } from '../schemas/testCase.schema.js'
 
 const service = new TestCaseService()
 const auditLogService = new AuditLogService()
@@ -23,6 +23,30 @@ testCaseRouter.get('/', async (req: Request, res: Response, next: NextFunction) 
   try {
     const suiteId = req.query.suiteId as string | undefined
     res.json(await service.findAll(suiteId))
+  } catch (err) { next(err) }
+})
+
+testCaseRouter.post('/bulk-delete', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { ids } = bulkDeleteTestCasesSchema.parse(req.body)
+    const existingCases = await service.findByIds(ids)
+    const { deletedIds, clearedSetupRefsCount } = await service.deleteMany(ids)
+
+    await Promise.all(existingCases.map(item => (
+      auditLogService.create({
+        entityType: 'case',
+        entityId: item.id,
+        action: 'case_deleted',
+        summary: `Cenário "${item.name}" foi removido em lote.`,
+        actor: req.auth!.actor,
+      })
+    )))
+
+    res.json({
+      deletedIds,
+      deletedCount: deletedIds.length,
+      clearedSetupRefsCount,
+    })
   } catch (err) { next(err) }
 })
 

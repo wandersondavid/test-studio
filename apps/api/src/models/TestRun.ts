@@ -1,5 +1,12 @@
 import { Schema, model, Document } from 'mongoose'
-import type { RunStatus, StepResult, AuditActor, RunRequestedVia } from '@test-studio/shared-types'
+import type {
+  RunStatus,
+  StepResult,
+  AuditActor,
+  RunRequestedVia,
+  ConsoleLogEntry,
+  NetworkLogEntry,
+} from '@test-studio/shared-types'
 import { AuditActorSchema } from './shared.js'
 
 export interface ITestRun extends Document {
@@ -11,6 +18,8 @@ export interface ITestRun extends Document {
   requestedVia?: RunRequestedVia
   sourceRunId?: string
   stepResults: StepResult[]
+  consoleLogs?: ConsoleLogEntry[]
+  networkLogs?: NetworkLogEntry[]
   durationMs?: number
   videoPath?: string
   tracePath?: string
@@ -26,6 +35,27 @@ const StepResultSchema = new Schema<StepResult>({
   screenshotPath: { type: String },
 }, { _id: false })
 
+const ConsoleLogSchema = new Schema<ConsoleLogEntry>({
+  id: { type: String, required: true },
+  stepId: { type: String },
+  type: { type: String, enum: ['log', 'info', 'warn', 'error', 'debug', 'trace'], required: true },
+  text: { type: String, required: true },
+  location: { type: String },
+  timestamp: { type: String, required: true },
+}, { _id: false })
+
+const NetworkLogSchema = new Schema<NetworkLogEntry>({
+  id: { type: String, required: true },
+  stepId: { type: String },
+  kind: { type: String, enum: ['request', 'response', 'failed'], required: true },
+  method: { type: String },
+  url: { type: String, required: true },
+  resourceType: { type: String },
+  status: { type: Number },
+  error: { type: String },
+  timestamp: { type: String, required: true },
+}, { _id: false })
+
 const TestRunSchema = new Schema<ITestRun>({
   caseId: { type: String, required: true },
   environmentId: { type: String, required: true },
@@ -35,6 +65,8 @@ const TestRunSchema = new Schema<ITestRun>({
   requestedVia: { type: String, enum: ['web', 'cli', 'history', 'suite'] },
   sourceRunId: { type: String },
   stepResults: { type: [StepResultSchema], default: [] },
+  consoleLogs: { type: [ConsoleLogSchema], default: [] },
+  networkLogs: { type: [NetworkLogSchema], default: [] },
   durationMs: { type: Number },
   videoPath: { type: String },
   tracePath: { type: String },

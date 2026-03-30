@@ -1,12 +1,28 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../services/api'
-import type { AuditEntry, Environment, ReusableBlock, StepRetryConfig, TestCase, TestStep, StepType } from '@test-studio/shared-types'
+import type {
+  AuditEntry,
+  Environment,
+  ReusableBlock,
+  ReusableBlockParameter,
+  StepRetryConfig,
+  StepApiCondition,
+  TestCase,
+  TestStep,
+  StepType,
+} from '@test-studio/shared-types'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { getAuthToken } from '../services/session'
+import {
+  buildParameterValueMap,
+  collectTemplateVariables,
+  interpolateStepsWithVariables,
+} from '../lib/blockInterpolation'
 
 type RecorderAction = 'click' | 'fill' | 'select' | 'check' | 'assertVisible' | 'assertText'
 type RecorderMode = 'auto' | 'manual'
@@ -18,6 +34,7 @@ interface RecorderViewport {
 
 interface RecorderTarget {
   selector: string
+  selectorAlternatives?: string[]
   description?: string
   autoAction?: 'click' | 'fill' | 'select' | 'check'
   inputType?: string
@@ -25,6 +42,7 @@ interface RecorderTarget {
 
 interface RecorderPendingInput {
   selector: string
+  selectorAlternatives?: string[]
   description?: string
   value: string
   action: 'fill' | 'select'
@@ -63,6 +81,10 @@ interface RetryPreset {
   draft: StepTimingDraft
 }
 
+interface BlockParameterValueDraft {
+  [key: string]: string
+}
+
 const STEP_TYPES: StepType[] = [
   'visit',
   'click',
@@ -71,6 +93,7 @@ const STEP_TYPES: StepType[] = [
   'check',
   'waitForVisible',
   'waitForURL',
+  'waitForApi',
   'assertText',
   'assertVisible',
 ]
@@ -83,6 +106,7 @@ const STEP_LABELS: Record<StepType, string> = {
   check: 'Marcar checkbox',
   waitForVisible: 'Aguardar visível',
   waitForURL: 'Aguardar URL',
+  waitForApi: 'Aguardar API',
   assertText: 'Verificar texto',
   assertVisible: 'Verificar visível',
 }
@@ -127,11 +151,15 @@ const RETRY_PRESETS: RetryPreset[] = [
 ]
 
 function stepNeedsSelector(type: StepType): boolean {
-  return !['visit', 'waitForURL'].includes(type)
+  return !['visit', 'waitForURL', 'waitForApi'].includes(type)
 }
 
 function stepNeedsValue(type: StepType): boolean {
-  return !['click', 'check', 'assertVisible'].includes(type)
+  return !['click', 'check', 'assertVisible', 'waitForApi'].includes(type)
+}
+
+function stepNeedsApi(type: StepType): boolean {
+  return type === 'waitForApi'
 }
 
 function actionNeedsValue(action: RecorderAction): boolean {
@@ -154,6 +182,13 @@ function describeStep(step: TestStep): string {
   const label = STEP_LABELS[step.type]
   const timingSummary = describeStepTiming(step)
   const maskedValue = shouldMaskStepValue(step) ? maskSensitiveValue(step.value) : step.value
+
+  if (step.type === 'waitForApi') {
+    const method = step.api?.method ? `${step.api.method.toUpperCase()} ` : ''
+    const status = step.api?.status ? ` • status ${step.api.status}` : ''
+    const responseIncludes = step.api?.responseIncludes ? ` • contém "${step.api.responseIncludes}"` : ''
+    return `${label}: ${method}${step.api?.urlContains ?? 'API'}${status}${responseIncludes}${timingSummary}`
+  }
 
   if (step.selector && maskedValue) return `${label}: ${step.selector} → "${maskedValue}"${timingSummary}`
   if (step.selector) return `${label}: ${step.selector}${timingSummary}`
@@ -209,11 +244,16 @@ function isSameStep(left: TestStep | undefined, right: TestStep): boolean {
   return (
     left.type === right.type &&
     left.selector === right.selector &&
+    JSON.stringify(left.selectorAlternatives ?? []) === JSON.stringify(right.selectorAlternatives ?? []) &&
     left.value === right.value &&
     left.description === right.description &&
     left.timeoutMs === right.timeoutMs &&
     left.retry?.attempts === right.retry?.attempts &&
-    left.retry?.intervalMs === right.retry?.intervalMs
+    left.retry?.intervalMs === right.retry?.intervalMs &&
+    left.api?.urlContains === right.api?.urlContains &&
+    left.api?.method === right.api?.method &&
+    left.api?.status === right.api?.status &&
+    left.api?.responseIncludes === right.api?.responseIncludes
   )
 }
 
@@ -276,6 +316,33 @@ function normalizeRetryConfig(attemptsRaw: string, intervalSecondsRaw: string): 
   return {
     attempts,
     intervalMs,
+  }
+}
+
+function normalizeApiCondition(api?: Partial<StepApiCondition>): StepApiCondition | undefined {
+  if (!api) return undefined
+  const urlContains = api.urlContains?.trim()
+  if (!urlContains) return undefined
+
+  const method = api.method?.trim()
+  const responseIncludes = api.responseIncludes?.trim()
+
+  return {
+    urlContains,
+    method: method || undefined,
+    status: typeof api.status === 'number' ? api.status : undefined,
+    responseIncludes: responseIncludes || undefined,
+  }
+}
+
+function mergeApiDraft(current: Partial<TestStep>, patch: Partial<StepApiCondition>): Partial<TestStep> {
+  return {
+    ...current,
+    api: {
+      urlContains: current.api?.urlContains ?? '',
+      ...(current.api ?? {}),
+      ...patch,
+    } as StepApiCondition,
   }
 }
 
@@ -349,7 +416,10 @@ export function CaseBuilderPage() {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([])
   const [loadingAudit, setLoadingAudit] = useState(true)
   const [blockForm, setBlockForm] = useState({ name: '', description: '' })
+  const [blockParameters, setBlockParameters] = useState<ReusableBlockParameter[]>([])
   const [savingBlock, setSavingBlock] = useState(false)
+  const [blockInsertTarget, setBlockInsertTarget] = useState<ReusableBlock | null>(null)
+  const [blockParameterValues, setBlockParameterValues] = useState<BlockParameterValueDraft>({})
 
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [showRecorder, setShowRecorder] = useState(false)
@@ -390,6 +460,8 @@ export function CaseBuilderPage() {
     startX: number
     startY: number
   } | null>(null)
+
+  const detectedBlockParameterKeys = useMemo(() => collectTemplateVariables(steps), [steps])
 
   function revokeRecorderScreenshotUrl() {
     if (recorderScreenshotUrlRef.current) {
@@ -537,6 +609,21 @@ export function CaseBuilderPage() {
       .catch(err => setError(err.message))
       .finally(() => setLoadingEnvironments(false))
   }, [])
+
+  useEffect(() => {
+    setBlockParameters(current => {
+      const next = detectedBlockParameterKeys.map(key => {
+        const previous = current.find(parameter => parameter.key === key)
+        return previous ?? {
+          key,
+          label: key,
+          required: true,
+        }
+      })
+
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next
+    })
+  }, [detectedBlockParameterKeys])
 
   async function loadReusableBlocks() {
     setLoadingBlocks(true)
@@ -758,12 +845,18 @@ export function CaseBuilderPage() {
   function handleAddManualStep() {
     let timeoutMs: number | undefined
     let retry: StepRetryConfig | undefined
+    let api: StepApiCondition | undefined
 
     try {
       timeoutMs = parsePositiveSeconds(newStepTiming.timeoutSeconds)
       retry = normalizeRetryConfig(newStepTiming.retryAttempts, newStepTiming.retryIntervalSeconds)
+      api = newStep.type === 'waitForApi' ? normalizeApiCondition(newStep.api) : undefined
+
+      if (newStep.type === 'waitForApi' && !api) {
+        throw new Error('Preencha ao menos a URL parcial da chamada para usar waitForApi.')
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Configuração de retry inválida.')
+      setError(err instanceof Error ? err.message : 'Configuração do step inválida.')
       return
     }
 
@@ -771,10 +864,12 @@ export function CaseBuilderPage() {
       id: crypto.randomUUID(),
       type: newStep.type ?? 'click',
       selector: newStep.selector,
+      selectorAlternatives: newStep.selectorAlternatives,
       value: newStep.value,
       description: newStep.description,
       timeoutMs,
       retry,
+      api,
     }
 
     appendStep(step)
@@ -797,6 +892,14 @@ export function CaseBuilderPage() {
     replaceSteps(stepsRef.current.filter(step => step.id !== stepId))
   }
 
+  function updateBlockParameter(key: string, patch: Partial<ReusableBlockParameter>) {
+    setBlockParameters(current => current.map(parameter => (
+      parameter.key === key
+        ? { ...parameter, ...patch }
+        : parameter
+    )))
+  }
+
   async function handleCreateReusableBlock() {
     if (steps.length === 0) {
       setError('Adicione pelo menos um step antes de salvar um bloco reutilizável.')
@@ -816,6 +919,7 @@ export function CaseBuilderPage() {
         name: blockForm.name.trim(),
         description: blockForm.description.trim() || undefined,
         steps,
+        parameters: blockParameters.length > 0 ? blockParameters : undefined,
       })
 
       setBlockForm({ name: '', description: '' })
@@ -828,8 +932,47 @@ export function CaseBuilderPage() {
   }
 
   function handleInsertReusableBlock(block: ReusableBlock) {
+    if (block.parameters && block.parameters.length > 0) {
+      setBlockInsertTarget(block)
+      setBlockParameterValues(
+        Object.fromEntries(block.parameters.map(parameter => [parameter.key, parameter.defaultValue ?? '']))
+      )
+      return
+    }
+
     const clonedSteps = block.steps.map(step => ({ ...step, id: crypto.randomUUID() }))
     appendSteps(clonedSteps)
+  }
+
+  function confirmInsertReusableBlock() {
+    if (!blockInsertTarget) {
+      return
+    }
+
+    try {
+      const parameters = blockInsertTarget.parameters ?? []
+      const missingRequired = parameters.find(parameter => {
+        if (parameter.required === false) {
+          return false
+        }
+
+        const value = blockParameterValues[parameter.key] ?? parameter.defaultValue ?? ''
+        return value.trim().length === 0
+      })
+
+      if (missingRequired) {
+        throw new Error(`Preencha o parâmetro "${missingRequired.label ?? missingRequired.key}" para inserir o bloco.`)
+      }
+
+      const variableMap = buildParameterValueMap(parameters, blockParameterValues)
+      const interpolatedSteps = interpolateStepsWithVariables(blockInsertTarget.steps, variableMap)
+      const clonedSteps = interpolatedSteps.map(step => ({ ...step, id: crypto.randomUUID() }))
+      appendSteps(clonedSteps)
+      setBlockInsertTarget(null)
+      setBlockParameterValues({})
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível interpolar o bloco reutilizável.')
+    }
   }
 
   async function handleSaveSetupCase() {
@@ -1009,6 +1152,69 @@ export function CaseBuilderPage() {
     }
   }
 
+  async function createRecorderSession(options?: {
+    replaySteps?: TestStep[]
+    appendInitialSteps?: boolean
+    finalStatus?: string
+  }) {
+    const environment = environments.find(item => item._id === recorderEnvironmentId)
+    if (!environment) {
+      throw new Error('Selecione um ambiente para iniciar o gravador.')
+    }
+
+    const existingSessionId = recorderSessionRef.current
+    if (existingSessionId) {
+      await runnerRequest(`/recorder/sessions/${existingSessionId}`, { method: 'DELETE' })
+    }
+
+    const startPath = normalizeRecorderPath(recorderPath, environment)
+    const session = await runnerRequest<RecorderSessionResponse>('/recorder/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        environment,
+        startPath,
+      }),
+    })
+
+    setRecorderPath(startPath)
+    setShowRecorder(true)
+    setRecorderOverlayPosition(null)
+    setLastCapturedSelector('')
+    applyRecorderState(session)
+
+    if (options?.appendInitialSteps !== false) {
+      appendSteps(session.steps)
+    }
+
+    if (selectedSetupCaseId) {
+      setApplyingSetupCase(true)
+      try {
+        await applySetupCaseToRecorderSession(session.sessionId)
+      } finally {
+        setApplyingSetupCase(false)
+      }
+    }
+
+    if (options?.replaySteps && options.replaySteps.length > 0) {
+      setRecorderStatus(`Reexecutando ${options.replaySteps.length} steps até o ponto escolhido...`)
+      const replayedSession = await runnerRequest<RecorderSessionResponse>(
+        `/recorder/sessions/${session.sessionId}/replay`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            steps: options.replaySteps,
+          }),
+        }
+      )
+      applyRecorderState(replayedSession)
+    }
+
+    setRecorderStatus(
+      options?.finalStatus
+        ?? 'Sessão criada. Use o modo automático para clicar e digitar sem trocar a ação manualmente.'
+    )
+  }
+
   function handleRecorderOverlayPointerDown(event: PointerEvent<HTMLButtonElement>) {
     if (!recorderOverlayPosition) {
       return
@@ -1026,62 +1232,37 @@ export function CaseBuilderPage() {
   }
 
   async function handleStartRecorder() {
-    const environment = environments.find(item => item._id === recorderEnvironmentId)
-    if (!environment) {
-      setError('Selecione um ambiente para iniciar o gravador.')
-      return
-    }
-
     setRecorderBusy(true)
     setError(null)
     setRecorderStatus('Criando sessão Playwright...')
 
     try {
-      const existingSessionId = recorderSessionRef.current
-      if (existingSessionId) {
-        await runnerRequest(`/recorder/sessions/${existingSessionId}`, { method: 'DELETE' })
-      }
-
-      const startPath = normalizeRecorderPath(recorderPath, environment)
-      const session = await runnerRequest<RecorderSessionResponse>('/recorder/sessions', {
-        method: 'POST',
-        body: JSON.stringify({
-          environment,
-          startPath,
-        }),
-      })
-
-      setRecorderPath(startPath)
-      setShowRecorder(true)
-      setRecorderOverlayPosition(null)
-      setRecorderStatus('Sessão criada. Preparando recorder...')
-      setLastCapturedSelector('')
-      applyRecorderState(session)
-      appendSteps(session.steps)
-
-      if (selectedSetupCaseId) {
-        setApplyingSetupCase(true)
-        try {
-          await applySetupCaseToRecorderSession(session.sessionId)
-        } catch (setupError: unknown) {
-          setError(
-            setupError instanceof Error
-              ? `A sessão foi criada, mas o cenário base não pôde ser aplicado: ${setupError.message}`
-              : 'A sessão foi criada, mas o cenário base não pôde ser aplicado.'
-          )
-          setRecorderStatus('Sessão iniciada sem o setup automático. Você ainda pode aplicar o cenário base manualmente.')
-        } finally {
-          setApplyingSetupCase(false)
-        }
-      } else {
-        setRecorderStatus('Sessão criada. Use o modo automático para clicar e digitar sem trocar a ação manualmente.')
-      }
+      await createRecorderSession()
     } catch (err: unknown) {
       setRecorderActive(false)
       setRecorderSessionId(null)
       setRecorderViewport(null)
       setRecorderStatus('Não foi possível iniciar a sessão.')
       setError(err instanceof Error ? err.message : 'Erro ao iniciar o gravador Playwright.')
+    } finally {
+      setRecorderBusy(false)
+    }
+  }
+
+  async function handleRecordFromStep(targetIndex: number) {
+    setRecorderBusy(true)
+    setError(null)
+    setRecorderStatus(`Reposicionando o recorder antes do Step ${targetIndex + 1}...`)
+
+    try {
+      await createRecorderSession({
+        replaySteps: stepsRef.current.slice(0, targetIndex),
+        appendInitialSteps: false,
+        finalStatus: `Recorder reposicionado antes do Step ${targetIndex + 1}. Continue gravando a partir daqui.`,
+      })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Não foi possível reposicionar o recorder nesse ponto.')
+      setRecorderStatus('Falha ao reexecutar os steps anteriores.')
     } finally {
       setRecorderBusy(false)
     }
@@ -1365,7 +1546,7 @@ export function CaseBuilderPage() {
                   ? <>inicie a sessão, clique nos elementos do preview e deixe o recorder inferir cliques e preenchimentos automaticamente.</>
                   : <>inicie a sessão, escolha a ação e clique na imagem da página para executar no browser do Playwright.</>}
                 {' '}O builder grava <code>visit</code>, <code>click</code>, <code>fill</code>,{' '}
-                <code>select</code>, <code>check</code>, <code>assertVisible</code>, <code>assertText</code> e <code>waitForURL</code>.
+                <code>select</code>, <code>check</code>, <code>assertVisible</code>, <code>assertText</code>, <code>waitForURL</code> e <code>waitForApi</code>.
                 {recorderMode === 'auto' ? (
                   <div className="muted" style={{ marginTop: 8 }}>
                     Os controles rápidos agora ficam num painel flutuante sobre o preview, para você não precisar subir e descer a tela.
@@ -1694,8 +1875,24 @@ export function CaseBuilderPage() {
                         )}
                       </div>
                     )}
+                    {step.selectorAlternatives && step.selectorAlternatives.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Badge variant="warning">
+                          self-healing {[step.selector, ...step.selectorAlternatives].filter(Boolean).filter((value, currentIndex, all) => all.indexOf(value) === currentIndex).length} seletores
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                   <div className="step-actions">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid={`btn-record-from-${step.id}`}
+                      onClick={() => handleRecordFromStep(index)}
+                      disabled={loadingEnvironments || environments.length === 0 || recorderBusy}
+                    >
+                      Gravar daqui
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1873,6 +2070,63 @@ export function CaseBuilderPage() {
                   </label>
                 )}
 
+                {stepNeedsApi(newStep.type ?? 'click') && (
+                  <>
+                    <label className="field">
+                      <span className="field-label">URL contém</span>
+                      <input
+                        data-testid="input-step-api-url"
+                        placeholder="/api/cargas"
+                        value={newStep.api?.urlContains ?? ''}
+                        onChange={event =>
+                          setNewStep(current => mergeApiDraft(current, { urlContains: event.target.value }))
+                        }
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span className="field-label">Método</span>
+                      <input
+                        data-testid="input-step-api-method"
+                        placeholder="POST"
+                        value={newStep.api?.method ?? ''}
+                        onChange={event =>
+                          setNewStep(current => mergeApiDraft(current, { method: event.target.value }))
+                        }
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span className="field-label">Status esperado</span>
+                      <input
+                        data-testid="input-step-api-status"
+                        placeholder="200"
+                        value={newStep.api?.status?.toString() ?? ''}
+                        onChange={event =>
+                          setNewStep(current => mergeApiDraft(current, {
+                            status: (() => {
+                              const parsed = Number(event.target.value)
+                              return event.target.value.trim() && Number.isFinite(parsed) ? parsed : undefined
+                            })(),
+                          }))
+                        }
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span className="field-label">Resposta contém</span>
+                      <input
+                        data-testid="input-step-api-response"
+                        placeholder="id ou status do backend"
+                        value={newStep.api?.responseIncludes ?? ''}
+                        onChange={event =>
+                          setNewStep(current => mergeApiDraft(current, { responseIncludes: event.target.value }))
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+
                 <label className="field">
                   <span className="field-label">Timeout por tentativa (segundos)</span>
                   <input
@@ -1978,6 +2232,74 @@ export function CaseBuilderPage() {
               </Button>
             </div>
 
+            <div className="rounded-xl border border-border/70 bg-background/50 p-4">
+              <div className="text-sm font-semibold">Parâmetros detectados</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                Use placeholders como <code>{'{{usuario}}'}</code> ou <code>{'{{senha}}'}</code> nos steps para transformar esse bloco em algo reutilizável.
+              </div>
+
+              {blockParameters.length === 0 ? (
+                <div className="mt-4 text-sm text-muted-foreground">
+                  Nenhum placeholder foi detectado nos steps atuais.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {blockParameters.map(parameter => (
+                    <div key={parameter.key} className="rounded-xl border border-border/60 bg-background/60 p-3">
+                      <div className="field-grid">
+                        <label className="field">
+                          <span className="field-label">Chave</span>
+                          <input value={parameter.key} disabled />
+                        </label>
+                        <label className="field">
+                          <span className="field-label">Rótulo</span>
+                          <input
+                            value={parameter.label ?? ''}
+                            onChange={event => updateBlockParameter(parameter.key, { label: event.target.value })}
+                            placeholder="Ex: Usuário operador"
+                          />
+                        </label>
+                        <label className="field">
+                          <span className="field-label">Valor padrão</span>
+                          <input
+                            value={parameter.defaultValue ?? ''}
+                            onChange={event => updateBlockParameter(parameter.key, { defaultValue: event.target.value })}
+                            placeholder="Opcional"
+                          />
+                        </label>
+                        <label className="field">
+                          <span className="field-label">Descrição</span>
+                          <input
+                            value={parameter.description ?? ''}
+                            onChange={event => updateBlockParameter(parameter.key, { description: event.target.value })}
+                            placeholder="Quando usar esse parâmetro"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={parameter.required === false ? 'outline' : 'secondary'}
+                          onClick={() => updateBlockParameter(parameter.key, { required: parameter.required === false })}
+                        >
+                          {parameter.required === false ? 'Opcional' : 'Obrigatório'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={parameter.secret ? 'secondary' : 'outline'}
+                          onClick={() => updateBlockParameter(parameter.key, { secret: !parameter.secret })}
+                        >
+                          {parameter.secret ? 'Campo secreto' : 'Marcar como secreto'}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {loadingBlocks ? (
               <div className="loading-state">Carregando blocos...</div>
             ) : reusableBlocks.length === 0 ? (
@@ -1992,6 +2314,15 @@ export function CaseBuilderPage() {
                         <div className="mt-1 text-sm text-muted-foreground">
                           {block.description || 'Sem descrição'} • {block.steps.length} steps
                         </div>
+                        {block.parameters && block.parameters.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {block.parameters.map(parameter => (
+                              <Badge key={parameter.key} variant={parameter.secret ? 'warning' : 'outline'}>
+                                {parameter.label || parameter.key}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <Button size="sm" variant="outline" onClick={() => handleInsertReusableBlock(block)}>
                         Inserir no cenário
@@ -2039,6 +2370,40 @@ export function CaseBuilderPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(blockInsertTarget)}
+        title={blockInsertTarget ? `Inserir bloco "${blockInsertTarget.name}"` : 'Inserir bloco reutilizável'}
+        description="Preencha os parâmetros antes de anexar os steps ao cenário atual."
+        confirmLabel="Inserir bloco"
+        onCancel={() => {
+          setBlockInsertTarget(null)
+          setBlockParameterValues({})
+        }}
+        onConfirm={confirmInsertReusableBlock}
+      >
+        <div className="space-y-3">
+          {blockInsertTarget?.parameters?.map(parameter => (
+            <label key={parameter.key} className="field">
+              <span className="field-label">{parameter.label || parameter.key}</span>
+              <input
+                type={parameter.secret ? 'password' : 'text'}
+                value={blockParameterValues[parameter.key] ?? ''}
+                onChange={event =>
+                  setBlockParameterValues(current => ({
+                    ...current,
+                    [parameter.key]: event.target.value,
+                  }))
+                }
+                placeholder={parameter.description || `Valor para {{${parameter.key}}}`}
+              />
+              {parameter.description && (
+                <span className="text-xs text-muted-foreground">{parameter.description}</span>
+              )}
+            </label>
+          ))}
+        </div>
+      </ConfirmDialog>
     </div>
   )
 }

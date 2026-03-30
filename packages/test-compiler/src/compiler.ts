@@ -1,33 +1,88 @@
 import type { TestStep } from '@test-studio/shared-types'
 
-function compileStepBody(step: TestStep, timeout: number, sel: string, val: string): string {
+function buildSelectorCandidates(step: TestStep): string[] {
+  return [...new Set([step.selector, ...(step.selectorAlternatives ?? [])].filter(Boolean) as string[])]
+}
+
+function buildSelectorResolver(step: TestStep, timeout: number): string {
+  const candidates = buildSelectorCandidates(step)
+  const serializedCandidates = JSON.stringify(candidates)
+
+  return `
+const __selectorCandidates = ${serializedCandidates};
+const __resolveLocator = async () => {
+  let __lastSelectorError;
+  for (const __candidate of __selectorCandidates) {
+    try {
+      const __locator = page.locator(__candidate).first();
+      const __count = await __locator.count();
+      if (__count === 0) {
+        continue;
+      }
+      await __locator.waitFor({ state: 'attached', timeout: Math.min(${timeout}, 1500) }).catch(() => undefined);
+      return { locator: __locator, selector: __candidate };
+    } catch (__error) {
+      __lastSelectorError = __error;
+    }
+  }
+
+  const __selectorList = __selectorCandidates.join(', ');
+  const __selectorMessage = __lastSelectorError instanceof Error ? __lastSelectorError.message : '';
+  throw new Error(\`Nenhum seletor conseguiu localizar o elemento. Tentados: \${__selectorList}\${__selectorMessage ? ' | Ultimo erro: ' + __selectorMessage : ''}\`);
+};
+const { locator: __locator, selector: __resolvedSelector } = await __resolveLocator();
+void __resolvedSelector;
+`.trim()
+}
+
+function compileStepBody(step: TestStep, timeout: number, val: string): string {
   switch (step.type) {
     case 'visit':
       return `await page.goto(${val});`
 
     case 'click':
-      return `await page.click(${sel}, { timeout: ${timeout} });`
+      return `await __locator.click({ timeout: ${timeout} });`
 
     case 'fill':
-      return `await page.fill(${sel}, ${val}, { timeout: ${timeout} });`
+      return `await __locator.fill(${val}, { timeout: ${timeout} });`
 
     case 'select':
-      return `await page.selectOption(${sel}, ${val}, { timeout: ${timeout} });`
+      return `await __locator.selectOption(${val}, { timeout: ${timeout} });`
 
     case 'check':
-      return `await page.check(${sel}, { timeout: ${timeout} });`
+      return `await __locator.check({ timeout: ${timeout} });`
 
     case 'waitForVisible':
-      return `await page.waitForSelector(${sel}, { state: 'visible', timeout: ${timeout} });`
+      return `await __locator.waitFor({ state: 'visible', timeout: ${timeout} });`
 
     case 'waitForURL':
       return `await page.waitForURL(${val}, { timeout: ${timeout} });`
 
+    case 'waitForApi': {
+      const urlContains = JSON.stringify(step.api?.urlContains ?? '')
+      const method = step.api?.method ? JSON.stringify(step.api.method.toUpperCase()) : 'undefined'
+      const status = typeof step.api?.status === 'number' ? String(step.api.status) : 'undefined'
+      const responseIncludes = step.api?.responseIncludes ? JSON.stringify(step.api.responseIncludes) : 'undefined'
+
+      return `
+await page.waitForResponse(async response => {
+  if (!response.url().includes(${urlContains})) return false;
+  if (${method} && response.request().method().toUpperCase() !== ${method}) return false;
+  if (typeof ${status} === 'number' && response.status() !== ${status}) return false;
+  if (${responseIncludes}) {
+    const __body = await response.text().catch(() => '');
+    return __body.includes(${responseIncludes});
+  }
+  return true;
+}, { timeout: ${timeout} });
+`.trim()
+    }
+
     case 'assertText':
-      return `await expect(page.locator(${sel})).toContainText(${val}, { timeout: ${timeout} });`
+      return `await expect(__locator).toContainText(${val}, { timeout: ${timeout} });`
 
     case 'assertVisible':
-      return `await expect(page.locator(${sel})).toBeVisible({ timeout: ${timeout} });`
+      return `await expect(__locator).toBeVisible({ timeout: ${timeout} });`
 
     default:
       throw new Error(`Step type desconhecido: ${(step as TestStep).type}`)
@@ -35,10 +90,12 @@ function compileStepBody(step: TestStep, timeout: number, sel: string, val: stri
 }
 
 export function compileStep(step: TestStep): string {
-  const sel = step.selector ? JSON.stringify(step.selector) : 'undefined'
   const val = step.value ? JSON.stringify(step.value) : 'undefined'
   const timeout = step.timeoutMs ?? 10000
-  const body = compileStepBody(step, timeout, sel, val)
+  const needsSelector = !['visit', 'waitForURL', 'waitForApi'].includes(step.type)
+  const selectorResolver = needsSelector ? `${buildSelectorResolver(step, timeout)}\n` : ''
+  const body = compileStepBody(step, timeout, val)
+  const code = `${selectorResolver}${body}`
 
   if (step.retry && step.retry.attempts > 1) {
     const attempts = step.retry.attempts
@@ -48,7 +105,7 @@ export function compileStep(step: TestStep): string {
 let __lastError;
 for (let __attempt = 1; __attempt <= ${attempts}; __attempt += 1) {
   try {
-    ${body}
+    ${code}
     __lastError = undefined;
     break;
   } catch (__error) {
@@ -62,7 +119,7 @@ for (let __attempt = 1; __attempt <= ${attempts}; __attempt += 1) {
 }`.trim()
   }
 
-  return body
+  return code
 }
 
 export function compileSteps(steps: TestStep[]): string {

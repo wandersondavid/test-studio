@@ -1,4 +1,4 @@
-import type { StepResult, RunStatus } from '@test-studio/shared-types'
+import type { StepResult, RunStatus, ConsoleLogEntry, NetworkLogEntry } from '@test-studio/shared-types'
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001'
 const RUNNER_SHARED_SECRET = process.env.RUNNER_SHARED_SECRET ?? 'test-studio-runner-secret'
@@ -8,6 +8,8 @@ export async function postResult(
   result: {
     status: RunStatus
     stepResults: StepResult[]
+    consoleLogs?: ConsoleLogEntry[]
+    networkLogs?: NetworkLogEntry[]
     durationMs: number
     videoPath?: string
     error?: string

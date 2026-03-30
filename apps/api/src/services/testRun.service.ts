@@ -1,5 +1,11 @@
 import { TestRun, ITestRun } from '../models/TestRun.js'
-import type { AuditActor, RunRequestedVia, StepResult } from '@test-studio/shared-types'
+import type {
+  AuditActor,
+  RunRequestedVia,
+  StepResult,
+  ConsoleLogEntry,
+  NetworkLogEntry,
+} from '@test-studio/shared-types'
 
 export class TestRunService {
   async findAll(): Promise<ITestRun[]> {
@@ -26,6 +32,8 @@ export class TestRunService {
     result: {
       status: ITestRun['status']
       stepResults: StepResult[]
+      consoleLogs?: ConsoleLogEntry[]
+      networkLogs?: NetworkLogEntry[]
       durationMs: number
       videoPath?: string
       tracePath?: string

@@ -12,6 +12,7 @@ interface RecorderViewport {
 
 interface RecorderTarget {
   selector: string
+  selectorAlternatives?: string[]
   description?: string
   text?: string
   tagName?: string
@@ -21,6 +22,7 @@ interface RecorderTarget {
 
 interface RecorderPendingInput {
   selector: string
+  selectorAlternatives?: string[]
   description?: string
   value: string
   action: PendingRecorderAction
@@ -153,6 +155,7 @@ export async function interactRecorderSession(input: {
           await session.page.locator(target.selector).first().click({ timeout: STEP_TIMEOUT_MS })
           session.pendingInput = {
             selector: target.selector,
+            selectorAlternatives: target.selectorAlternatives,
             description: target.description,
             value: '',
             action: target.autoAction,
@@ -166,6 +169,7 @@ export async function interactRecorderSession(input: {
             buildStep({
               type: 'check',
               selector: target.selector,
+              selectorAlternatives: target.selectorAlternatives,
               description: target.description,
             })
           )
@@ -177,6 +181,7 @@ export async function interactRecorderSession(input: {
             buildStep({
               type: 'click',
               selector: target.selector,
+              selectorAlternatives: target.selectorAlternatives,
               description: target.description,
             })
           )
@@ -191,6 +196,7 @@ export async function interactRecorderSession(input: {
         buildStep({
           type: 'click',
           selector: target.selector,
+          selectorAlternatives: target.selectorAlternatives,
           description: target.description,
         })
       )
@@ -203,6 +209,7 @@ export async function interactRecorderSession(input: {
         buildStep({
           type: 'fill',
           selector: target.selector,
+          selectorAlternatives: target.selectorAlternatives,
           value: input.value,
           description: target.description,
         })
@@ -216,6 +223,7 @@ export async function interactRecorderSession(input: {
         buildStep({
           type: 'select',
           selector: target.selector,
+          selectorAlternatives: target.selectorAlternatives,
           value: input.value,
           description: target.description,
         })
@@ -228,6 +236,7 @@ export async function interactRecorderSession(input: {
         buildStep({
           type: 'check',
           selector: target.selector,
+          selectorAlternatives: target.selectorAlternatives,
           description: target.description,
         })
       )
@@ -239,6 +248,7 @@ export async function interactRecorderSession(input: {
         buildStep({
           type: 'assertVisible',
           selector: target.selector,
+          selectorAlternatives: target.selectorAlternatives,
           description: target.description,
         })
       )
@@ -255,6 +265,7 @@ export async function interactRecorderSession(input: {
         buildStep({
           type: 'assertText',
           selector: target.selector,
+          selectorAlternatives: target.selectorAlternatives,
           value: text,
           description: target.description,
         })
@@ -320,6 +331,7 @@ export async function typeIntoRecorderSession(input: {
       buildStep({
         type: pendingInput.action,
         selector: pendingInput.selector,
+        selectorAlternatives: pendingInput.selectorAlternatives,
         value: input.value,
         description: pendingInput.description,
       })
@@ -340,6 +352,7 @@ export async function typeIntoRecorderSession(input: {
 
   return await buildSessionState(session, steps, {
     selector: pendingInput.selector,
+    selectorAlternatives: pendingInput.selectorAlternatives,
     description: pendingInput.description,
     autoAction: pendingInput.action,
     inputType: pendingInput.inputType,
@@ -467,6 +480,10 @@ async function resolveTarget(page: Page, x: number, y: number, action: RecorderA
       return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
     }
 
+    function escapePlaywrightText(value: string): string {
+      return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    }
+
     function nthIndex(element: Element): number {
       let index = 1
       let sibling = element.previousElementSibling
@@ -521,6 +538,33 @@ async function resolveTarget(page: Page, x: number, y: number, action: RecorderA
       }
 
       return buildFallbackSelector(element)
+    }
+
+    function buildSelectorAlternatives(element: Element): string[] {
+      const selectors: string[] = []
+      const tagName = element.tagName.toLowerCase()
+      const testId = element.getAttribute('data-testid')
+      const id = element.getAttribute('id')
+      const name = element.getAttribute('name')
+      const ariaLabel = element.getAttribute('aria-label')
+      const placeholder = element.getAttribute('placeholder')
+      const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+
+      if (testId) selectors.push(`[data-testid="${escapeAttribute(testId)}"]`)
+      if (id) selectors.push(`[id="${escapeAttribute(id)}"]`)
+      if (name) selectors.push(`${tagName}[name="${escapeAttribute(name)}"]`)
+      if (ariaLabel) selectors.push(`${tagName}[aria-label="${escapeAttribute(ariaLabel)}"]`)
+      if (placeholder) selectors.push(`${tagName}[placeholder="${escapeAttribute(placeholder)}"]`)
+      if (text) {
+        if (tagName === 'button') {
+          selectors.push(`button:has-text("${escapePlaywrightText(text)}")`)
+        }
+        selectors.push(`text="${escapePlaywrightText(text)}"`)
+      }
+
+      selectors.push(buildFallbackSelector(element))
+
+      return [...new Set(selectors.filter(Boolean))]
     }
 
     function isVisible(element: Element): boolean {
@@ -646,6 +690,7 @@ async function resolveTarget(page: Page, x: number, y: number, action: RecorderA
 
     return {
       selector: buildSelector(targetElement),
+      selectorAlternatives: buildSelectorAlternatives(targetElement),
       description: text || undefined,
       text: text || undefined,
       tagName,
