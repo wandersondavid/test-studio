@@ -2,7 +2,7 @@ import type { AuditActor } from './audit'
 import type { StepType } from './testStep'
 
 export type RunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'error'
-export type RunRequestedVia = 'web' | 'cli' | 'history' | 'suite'
+export type RunRequestedVia = 'web' | 'cli' | 'history' | 'suite' | 'scheduled'
 
 export interface StepResult {
   stepId: string

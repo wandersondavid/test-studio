@@ -62,7 +62,7 @@ const TestRunSchema = new Schema<ITestRun>({
   datasetId: { type: String },
   status: { type: String, enum: ['pending', 'running', 'passed', 'failed', 'error'], default: 'pending' },
   requestedBy: { type: AuditActorSchema },
-  requestedVia: { type: String, enum: ['web', 'cli', 'history', 'suite'] },
+  requestedVia: { type: String, enum: ['web', 'cli', 'history', 'suite', 'scheduled'] },
   sourceRunId: { type: String },
   stepResults: { type: [StepResultSchema], default: [] },
   consoleLogs: { type: [ConsoleLogSchema], default: [] },

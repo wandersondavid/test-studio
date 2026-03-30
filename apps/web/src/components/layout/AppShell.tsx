@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
+  BarChart3,
+  Bell,
   Blocks,
+  Clock,
   Clock3,
   Gauge,
   LogOut,
@@ -29,6 +32,9 @@ const NAV_ITEMS = [
   { to: '/suites', label: 'Suítes', description: 'Organização dos cenários', icon: Blocks },
   { to: '/run', label: 'Executar', description: 'Disparar testes E2E', icon: PlayCircle },
   { to: '/history', label: 'Histórico', description: 'Runs, logs e falhas', icon: Clock3 },
+  { to: '/analytics', label: 'Analytics', description: 'Métricas e flakiness', icon: BarChart3 },
+  { to: '/schedules', label: 'Agendamentos', description: 'Execuções automáticas cron', icon: Clock },
+  { to: '/notification-channels', label: 'Notificações', description: 'Slack e webhooks', icon: Bell },
 ]
 
 const PAGE_LABELS = new Map<string, string>([
@@ -37,7 +43,10 @@ const PAGE_LABELS = new Map<string, string>([
   ['/suites', 'Suítes'],
   ['/run', 'Execução'],
   ['/history', 'Histórico'],
+  ['/analytics', 'Analytics'],
   ['/users', 'Usuários'],
+  ['/schedules', 'Agendamentos'],
+  ['/notification-channels', 'Notificações'],
 ])
 
 function resolveCurrentLabel(pathname: string): string {

@@ -14,8 +14,13 @@ import { datasetRouter } from './routes/dataset.routes.js'
 import { testRunRouter } from './routes/testRun.routes.js'
 import { auditLogRouter } from './routes/auditLog.routes.js'
 import { reusableBlockRouter } from './routes/reusableBlock.routes.js'
+import { analyticsRouter } from './routes/analytics.routes.js'
+import { notificationChannelRouter } from './routes/notificationChannel.routes.js'
+import { scheduleRouter } from './routes/schedule.routes.js'
+import { aiRouter } from './routes/ai.routes.js'
 import { UserService } from './services/user.service.js'
 import { hashPassword } from './utils/auth.js'
+import { startScheduler } from './services/scheduler.service.js'
 
 const app = express()
 const PORT = process.env.PORT ?? 3001
@@ -35,6 +40,10 @@ app.use('/datasets', requireAuth, datasetRouter)
 app.use('/reusable-blocks', requireAuth, reusableBlockRouter)
 app.use('/audit-logs', requireAuth, auditLogRouter)
 app.use('/test-runs', testRunRouter)
+app.use('/analytics', requireAuth, analyticsRouter)
+app.use('/notification-channels', requireAuth, notificationChannelRouter)
+app.use('/schedules', requireAuth, scheduleRouter)
+app.use('/ai', requireAuth, aiRouter)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
@@ -63,6 +72,7 @@ async function ensureBootstrapAdmin(): Promise<void> {
 
 connectDB().then(async () => {
   await ensureBootstrapAdmin()
+  await startScheduler()
   app.listen(PORT, () => {
     console.log(`API rodando em http://localhost:${PORT}`)
   })
