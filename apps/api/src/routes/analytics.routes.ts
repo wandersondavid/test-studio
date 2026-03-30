@@ -85,7 +85,6 @@ analyticsRouter.get('/flakiness', async (req: Request, res: Response, next: Next
           failedRuns: { $sum: { $cond: [{ $in: ['$status', ['failed', 'error']] }, 1, 0] } },
         },
       },
-      { $match: { totalRuns: { $gte: 1 } } },
       {
         $addFields: {
           flakinessScore: {
@@ -138,6 +137,8 @@ analyticsRouter.get('/slowest-steps', async (req: Request, res: Response, next: 
         $group: {
           _id: '$stepResults.stepId',
           type: { $first: '$stepResults.type' },
+          description: { $first: '$stepResults.description' },
+          selector: { $first: '$stepResults.selector' },
           avgDurationMs: { $avg: '$stepResults.durationMs' },
           occurrences: { $sum: 1 },
         },
@@ -149,6 +150,8 @@ analyticsRouter.get('/slowest-steps', async (req: Request, res: Response, next: 
           _id: 0,
           stepId: '$_id',
           type: 1,
+          description: 1,
+          selector: 1,
           avgDurationMs: { $round: ['$avgDurationMs', 0] },
           occurrences: 1,
         },

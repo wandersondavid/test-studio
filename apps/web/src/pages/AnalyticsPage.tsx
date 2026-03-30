@@ -102,7 +102,7 @@ export function AnalyticsPage() {
                         title={`Failed: ${d.failed}`}
                       />
                       <div
-                        className="bg-green-400 w-full rounded-t-sm"
+                        className={`bg-green-400 w-full ${d.failed === 0 ? 'rounded-t-sm' : ''}`}
                         style={{ height: `${(d.passed / maxTotal) * 100}%` }}
                         title={`Passed: ${d.passed}`}
                       />
