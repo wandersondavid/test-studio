@@ -213,7 +213,7 @@ export function AppShell({ children }: AppShellProps) {
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault()
-        closeSearch()
+        closeSearch(true)
       }
     }
 
@@ -275,7 +275,7 @@ export function AppShell({ children }: AppShellProps) {
         console.error('[search] Falha ao carregar dados:', error)
         setSearchError(error instanceof Error && error.message
           ? error.message
-          : 'Erro ao buscar dados. Verifique sua conexão ou permissões.')
+          : 'Não foi possível carregar os dados de busca. Tente novamente ou contate o suporte se o problema persistir.')
       } finally {
         if (!cancelled) {
           setSearchLoading(false)
