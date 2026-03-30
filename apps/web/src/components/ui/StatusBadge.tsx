@@ -16,6 +16,6 @@ export function StatusBadge({ status }: StatusBadgeProps) {
           : 'danger'
 
   return (
-    <Badge variant={variant}>{status}</Badge>
+    <Badge variant={variant} className="uppercase tracking-[0.08em]">{status}</Badge>
   )
 }

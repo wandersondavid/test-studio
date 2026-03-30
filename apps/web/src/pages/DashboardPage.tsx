@@ -47,28 +47,24 @@ export function DashboardPage() {
         }
       />
 
-      <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="summary-grid">
         {[
           { label: 'Execuções recentes', value: runs.length, note: 'Últimos runs visíveis no dashboard' },
           { label: 'Sucesso', value: passedRuns, note: 'Runs finalizados com status passed' },
           { label: 'Falhas', value: failedRuns, note: 'Runs com falha ou erro' },
           { label: 'Ativos', value: activeRuns, note: 'Execuções pendentes ou em andamento' },
         ].map(item => (
-          <Card key={item.label} className="bg-card/70">
-            <CardHeader className="pb-3">
-              <CardDescription className="text-[0.72rem] uppercase tracking-[0.16em]">{item.label}</CardDescription>
-              <CardTitle className="font-['Space_Grotesk'] text-4xl font-semibold">{item.value}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">{item.note}</p>
-            </CardContent>
-          </Card>
+          <div key={item.label} className="stat-card">
+            <span className="stat-label">{item.label}</span>
+            <span className="stat-value">{item.value}</span>
+            <span className="stat-note">{item.note}</span>
+          </div>
         ))}
       </section>
 
-      <Card className="bg-card/70">
+      <Card className="bg-card/60">
         <CardHeader>
-          <CardTitle className="font-['Space_Grotesk'] text-2xl">Últimas execuções</CardTitle>
+          <CardTitle className="text-lg font-semibold">Últimas execuções</CardTitle>
           <CardDescription>Use essa área para acompanhar rapidamente o que acabou de rodar.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -82,7 +78,7 @@ export function DashboardPage() {
               </Button>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-border/70">
+            <div className="overflow-x-auto rounded-2xl border border-border/60 bg-background/40">
               <table className="table">
                 <thead>
                   <tr>

@@ -89,7 +89,7 @@ export function UsersPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_380px]">
         <Card className="bg-card/70">
           <CardHeader>
-            <CardTitle className="font-['Space_Grotesk'] text-2xl">Equipe</CardTitle>
+            <CardTitle className="font-['Inter'] text-2xl">Equipe</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -134,7 +134,7 @@ export function UsersPage() {
 
         <Card className="bg-card/70">
           <CardHeader>
-            <CardTitle className="font-['Space_Grotesk'] text-2xl">Novo usuário</CardTitle>
+            <CardTitle className="font-['Inter'] text-2xl">Novo usuário</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateUser} className="space-y-4" data-testid="user-form">

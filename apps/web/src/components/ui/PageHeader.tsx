@@ -12,8 +12,8 @@ export function PageHeader({ eyebrow, title, description, actions, meta }: PageH
   return (
     <header className="mb-6 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
       <div className="max-w-4xl space-y-3">
-        {eyebrow && <div className="page-kicker text-[0.72rem]">{eyebrow}</div>}
-        <h1 className="font-['Space_Grotesk'] text-4xl font-semibold tracking-[-0.04em] text-foreground md:text-5xl">
+        {eyebrow && <div className="page-kicker text-[0.68rem]">{eyebrow}</div>}
+        <h1 className="page-title text-foreground">
           {title}
         </h1>
         {description && <p className="max-w-3xl text-sm leading-7 text-muted-foreground md:text-base">{description}</p>}

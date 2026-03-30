@@ -1,50 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: 0 0% 8%;
-  --foreground: 0 0% 96%;
-  --card: 0 0% 11%;
-  --card-foreground: 0 0% 96%;
-  --popover: 0 0% 11%;
-  --popover-foreground: 0 0% 96%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 0 0% 9%;
-  --secondary: 0 0% 15%;
-  --secondary-foreground: 0 0% 96%;
-  --muted: 0 0% 14%;
-  --muted-foreground: 0 0% 64%;
-  --accent: 0 0% 15%;
-  --accent-foreground: 0 0% 96%;
-  --destructive: 0 63% 31%;
-  --destructive-foreground: 0 0% 96%;
-  --border: 0 0% 18%;
-  --input: 0 0% 18%;
-  --ring: 0 0% 83%;
-  --radius: 0.9rem;
+  --background: 220 15% 8%;
+  --foreground: 210 40% 98%;
+  --card: 220 15% 12%;
+  --card-foreground: 210 40% 98%;
+  --popover: 220 15% 12%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 258 92% 66%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 16%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 220 14% 14%;
+  --muted-foreground: 215 16% 65%;
+  --accent: 220 14% 18%;
+  --accent-foreground: 210 40% 96%;
+  --destructive: 0 70% 38%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 14% 20%;
+  --input: 220 14% 20%;
+  --ring: 258 92% 70%;
+  --radius: 0.78rem;
 
   color-scheme: dark;
-  --bg: #101010;
-  --bg-deep: #0b0b0c;
-  --surface: rgba(23, 23, 25, 0.92);
-  --surface-strong: rgba(30, 30, 33, 0.96);
-  --surface-soft: rgba(23, 23, 25, 0.78);
-  --surface-hover: rgba(38, 38, 42, 0.96);
-  --stroke: rgba(255, 255, 255, 0.08);
-  --stroke-strong: rgba(255, 255, 255, 0.14);
-  --text: #f5f5f5;
-  --text-soft: #e7e7ea;
-  --muted-text: #a1a1aa;
-  --brand-accent: #8b5cf6;
-  --brand-accent-strong: #6d28d9;
-  --brand-accent-alt: #a78bfa;
-  --success: #34d399;
+  --bg: #0f1115;
+  --bg-deep: #0b0c10;
+  --surface: rgba(21, 23, 27, 0.92);
+  --surface-strong: rgba(26, 28, 34, 0.96);
+  --surface-soft: rgba(19, 21, 25, 0.8);
+  --surface-hover: rgba(30, 33, 39, 0.96);
+  --stroke: rgba(255, 255, 255, 0.1);
+  --stroke-strong: rgba(255, 255, 255, 0.18);
+  --text: #f4f6fb;
+  --text-soft: #e0e5ef;
+  --muted-text: #9aa3b2;
+  --brand-accent: #7c5cff;
+  --brand-accent-strong: #5f43e9;
+  --brand-accent-alt: #9d8bff;
+  --success: #2dd4bf;
   --danger: #fb7185;
   --warning: #fbbf24;
-  --shadow: 0 22px 60px rgba(0, 0, 0, 0.32);
+  --shadow: 0 20px 48px rgba(0, 0, 0, 0.38);
   --radius-xl: 28px;
   --radius-lg: 22px;
   --radius-md: 18px;
@@ -63,11 +63,9 @@ body,
 
 body {
   margin: 0;
-  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
   color: var(--text);
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.02), transparent 18%),
-    linear-gradient(180deg, #0f0f10 0%, #111112 48%, #0f0f10 100%);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
   background-attachment: fixed;
 }
 
@@ -134,7 +132,7 @@ textarea::placeholder {
 }
 
 code {
-  font-family: 'Space Grotesk', ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.92em;
   color: #f4f4f5;
   background: rgba(27, 27, 30, 0.92);
@@ -180,8 +178,8 @@ code {
   background: linear-gradient(135deg, var(--brand-accent), var(--brand-accent-alt));
   color: white;
   font-weight: 800;
-  font-family: 'Space Grotesk', sans-serif;
-  letter-spacing: 0.08em;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.04em;
 }
 
 .sidebar-kicker,
@@ -189,15 +187,15 @@ code {
 .topbar-kicker,
 .sidebar-section-label {
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  font-size: 0.68rem;
   color: var(--muted-text);
 }
 
 .sidebar-title {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .sidebar-workspace,
@@ -365,10 +363,9 @@ code {
 
 .page-title {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: clamp(2rem, 3.2vw, 3.2rem);
-  line-height: 1;
-  letter-spacing: -0.04em;
+  font-size: clamp(1.85rem, 2.8vw, 2.8rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
 }
 
 .page-description {
@@ -414,24 +411,22 @@ code {
   border: 1px solid var(--stroke);
   border-radius: var(--radius-md);
   padding: 18px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.03), transparent 28%),
-    linear-gradient(180deg, rgba(27, 27, 30, 0.94), rgba(20, 20, 23, 0.94));
+  background: rgba(21, 23, 28, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .stat-label {
   color: var(--muted-text);
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
 }
 
 .stat-value {
   display: block;
   margin-top: 10px;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 2rem;
-  line-height: 1;
+  font-size: 1.9rem;
+  line-height: 1.1;
 }
 
 .stat-note {
@@ -452,8 +447,8 @@ code {
 .section-heading h2,
 .section-heading h3 {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
 }
 
 .section-heading p {
@@ -522,20 +517,19 @@ code {
   padding: 0 12px 12px;
   color: var(--muted-text);
   text-align: left;
-  font-size: 0.76rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  font-weight: 600;
 }
 
 .table tbody td {
-  padding: 14px 12px;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  padding: 12px 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
   vertical-align: top;
 }
 
 .table tbody tr:hover {
-  background: rgba(39, 39, 42, 0.62);
+  background: rgba(45, 48, 56, 0.55);
 }
 
 .table tbody tr {
@@ -677,7 +671,7 @@ code {
 
 .run-logs-panel-header h3 {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
   font-size: 1.05rem;
 }
 
@@ -874,7 +868,7 @@ code {
 
 .confirm-dialog-title {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
   font-size: 1.45rem;
 }
 
@@ -1118,7 +1112,7 @@ code {
 }
 
 .mono {
-  font-family: 'Space Grotesk', ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 .muted {
@@ -1141,8 +1135,8 @@ code {
 }
 
 .table-id {
-  font-family: 'Space Grotesk', ui-monospace, monospace;
-  color: #d9fff7;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: #c7d2fe;
 }
 
 @keyframes rise-in {

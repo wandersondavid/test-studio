@@ -77,7 +77,7 @@ export function AnalyticsPage() {
               <Card key={item.label} className="bg-card/70">
                 <CardHeader className="pb-3">
                   <div className="text-[0.72rem] uppercase tracking-[0.16em] text-muted-foreground">{item.label}</div>
-                  <CardTitle className="font-['Space_Grotesk'] text-4xl font-semibold">{item.value}</CardTitle>
+                  <CardTitle className="font-['Inter'] text-4xl font-semibold">{item.value}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">{item.note}</p>
@@ -89,7 +89,7 @@ export function AnalyticsPage() {
           {/* Bar chart: Runs Last 7 Days */}
           <Card className="bg-card/70">
             <CardHeader>
-              <CardTitle className="font-['Space_Grotesk'] text-xl">Runs nos últimos 7 dias</CardTitle>
+              <CardTitle className="font-['Inter'] text-xl">Runs nos últimos 7 dias</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-end gap-2 h-40" data-testid="runs-chart">
@@ -125,7 +125,7 @@ export function AnalyticsPage() {
           {/* Flakiness table */}
           <Card className="bg-card/70">
             <CardHeader>
-              <CardTitle className="font-['Space_Grotesk'] text-xl">Top Testes Instáveis (Flakiness)</CardTitle>
+              <CardTitle className="font-['Inter'] text-xl">Top Testes Instáveis (Flakiness)</CardTitle>
             </CardHeader>
             <CardContent>
               {flakiness.length === 0 ? (
@@ -166,7 +166,7 @@ export function AnalyticsPage() {
           {/* Slowest steps table */}
           <Card className="bg-card/70">
             <CardHeader>
-              <CardTitle className="font-['Space_Grotesk'] text-xl">Steps mais lentos</CardTitle>
+              <CardTitle className="font-['Inter'] text-xl">Steps mais lentos</CardTitle>
             </CardHeader>
             <CardContent>
               {slowestSteps.length === 0 ? (
