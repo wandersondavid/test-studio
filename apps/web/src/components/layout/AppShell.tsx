@@ -75,7 +75,7 @@ export function AppShell({ children }: AppShellProps) {
               </div>
               <div className="min-w-0">
                 <div className="page-kicker">Workspace</div>
-                <div className="truncate font-['Space_Grotesk'] text-xl font-semibold">Test Studio</div>
+                <div className="truncate text-lg font-semibold tracking-tight">Test Studio</div>
               </div>
             </div>
 

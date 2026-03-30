@@ -1480,7 +1480,7 @@ export function CaseBuilderPage() {
           <CardHeader className="pb-1">
             <div className="section-heading mb-0">
               <div>
-                <CardTitle className="font-['Space_Grotesk'] text-2xl">Modo gravar com Playwright</CardTitle>
+                <CardTitle className="font-['Inter'] text-2xl">Modo gravar com Playwright</CardTitle>
                 <CardDescription className="mt-2 max-w-3xl">
                   O builder cria uma sessão real no runner, tira screenshots da página e executa a ação escolhida quando você
                   clica no preview. Cada interação vira step automaticamente.
@@ -1799,7 +1799,7 @@ export function CaseBuilderPage() {
 
       <Card className="bg-card/70">
         <CardHeader className="pb-2">
-          <CardTitle className="font-['Space_Grotesk'] text-2xl">Cenário Base</CardTitle>
+          <CardTitle className="font-['Inter'] text-2xl">Cenário Base</CardTitle>
           <CardDescription>
             Reaproveite um caso de login ou preparação como pré-condição deste cenário.
             Ele roda automaticamente antes da execução normal e também pode ser aplicado na sessão atual do recorder.
@@ -1863,7 +1863,7 @@ export function CaseBuilderPage() {
 
       <Card className="bg-card/70">
         <CardHeader className="pb-2">
-          <CardTitle className="font-['Space_Grotesk'] text-2xl">Sequência de steps</CardTitle>
+          <CardTitle className="font-['Inter'] text-2xl">Sequência de steps</CardTitle>
           <CardDescription>Revise, reordene e remova etapas antes de executar o cenário.</CardDescription>
         </CardHeader>
 
@@ -2214,7 +2214,7 @@ export function CaseBuilderPage() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_420px]">
         <Card className="bg-card/70">
           <CardHeader className="pb-2">
-            <CardTitle className="font-['Space_Grotesk'] text-2xl">Blocos reutilizáveis</CardTitle>
+            <CardTitle className="font-['Inter'] text-2xl">Blocos reutilizáveis</CardTitle>
             <CardDescription>Salve conjuntos de steps e reaplique em outros cenários sem regravar tudo.</CardDescription>
           </CardHeader>
 
@@ -2349,7 +2349,7 @@ export function CaseBuilderPage() {
 
         <Card className="bg-card/70">
           <CardHeader className="pb-2">
-            <CardTitle className="font-['Space_Grotesk'] text-2xl">Audit trail</CardTitle>
+            <CardTitle className="font-['Inter'] text-2xl">Audit trail</CardTitle>
             <CardDescription>Veja quem gravou, ajustou ou removeu steps deste cenário.</CardDescription>
           </CardHeader>
 

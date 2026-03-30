@@ -167,7 +167,7 @@ export function HistoryPage() {
         <>
           <Card className="mb-5 bg-card/70">
             <CardHeader className="pb-3">
-              <CardTitle className="font-['Space_Grotesk'] text-2xl">Fila de reteste</CardTitle>
+              <CardTitle className="font-['Inter'] text-2xl">Fila de reteste</CardTitle>
               <CardDescription>
                 Filtre os runs visíveis e reteste todos, só os sucessos, só as falhas ou uma seleção específica.
               </CardDescription>
@@ -256,7 +256,7 @@ export function HistoryPage() {
 
           <Card className="bg-card/70">
             <CardHeader className="pb-3">
-              <CardTitle className="font-['Space_Grotesk'] text-2xl">Linha do tempo dos runs</CardTitle>
+              <CardTitle className="font-['Inter'] text-2xl">Linha do tempo dos runs</CardTitle>
               <CardDescription>
                 Selecione o que quer reenfileirar ou abra o detalhe para inspecionar o resultado step a step.
               </CardDescription>

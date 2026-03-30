@@ -47,7 +47,7 @@ export function LoginPage() {
       <Card className="w-full max-w-lg bg-card/80">
         <CardHeader className="space-y-4">
           <div className="page-kicker">Test Studio</div>
-          <CardTitle className="font-['Space_Grotesk'] text-4xl">
+          <CardTitle className="font-['Inter'] text-4xl">
             {needsSetup ? 'Criar administrador inicial' : 'Entrar no workspace'}
           </CardTitle>
           <CardDescription className="text-base">
