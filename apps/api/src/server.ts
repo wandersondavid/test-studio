@@ -15,6 +15,7 @@ import { testRunRouter } from './routes/testRun.routes.js'
 import { auditLogRouter } from './routes/auditLog.routes.js'
 import { reusableBlockRouter } from './routes/reusableBlock.routes.js'
 import { analyticsRouter } from './routes/analytics.routes.js'
+import { notificationChannelRouter } from './routes/notificationChannel.routes.js'
 import { UserService } from './services/user.service.js'
 import { hashPassword } from './utils/auth.js'
 
@@ -37,6 +38,7 @@ app.use('/reusable-blocks', requireAuth, reusableBlockRouter)
 app.use('/audit-logs', requireAuth, auditLogRouter)
 app.use('/test-runs', testRunRouter)
 app.use('/analytics', requireAuth, analyticsRouter)
+app.use('/notification-channels', requireAuth, notificationChannelRouter)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 

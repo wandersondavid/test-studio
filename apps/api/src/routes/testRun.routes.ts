@@ -6,6 +6,7 @@ import { TestCaseService } from '../services/testCase.service.js'
 import { EnvironmentService } from '../services/environment.service.js'
 import { DatasetService } from '../services/dataset.service.js'
 import { AuditLogService } from '../services/auditLog.service.js'
+import { NotificationChannelService, sendNotification } from '../services/notificationChannel.service.js'
 import { executeSuiteRunsSchema, executeTestRunSchema } from '../schemas/testRun.schema.js'
 import { requireAuth, requireRunnerSecret } from '../middlewares/auth.js'
 import { getRunnerSharedSecret } from '../utils/auth.js'
@@ -15,6 +16,7 @@ const caseService = new TestCaseService()
 const envService = new EnvironmentService()
 const datasetService = new DatasetService()
 const auditLogService = new AuditLogService()
+const notificationChannelService = new NotificationChannelService()
 const artifactsDir = path.resolve(process.env.ARTIFACTS_DIR ?? './artifacts')
 
 export const testRunRouter = Router()
@@ -214,5 +216,17 @@ testRunRouter.patch('/:id/result', requireRunnerSecret, async (req: Request, res
     const updated = await runService.updateResult(req.params.id, req.body)
     if (!updated) { res.status(404).json({ error: 'Não encontrado' }); return }
     res.json(updated)
+
+    const finalStatuses = ['passed', 'failed', 'error'] as const
+    if (finalStatuses.includes(updated.status as typeof finalStatuses[number])) {
+      const [testCase, channels] = await Promise.all([
+        caseService.findById(updated.caseId),
+        notificationChannelService.findActive(),
+      ])
+      const caseName = testCase?.name ?? updated.caseId
+      sendNotification(updated, channels, caseName).catch(err => {
+        console.error('[notifications] Unexpected error in sendNotification:', err)
+      })
+    }
   } catch (err) { next(err) }
 })
