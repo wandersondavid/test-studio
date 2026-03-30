@@ -173,17 +173,24 @@ export function AppShell({ children }: AppShellProps) {
   const canSearch = normalizedQuery.length >= 2
   const totalResults = searchResults.cases.length + searchResults.runs.length + searchResults.environments.length
 
+  function closeSearch(clearQuery = false) {
+    if (clearQuery) {
+      setSearchQuery('')
+    }
+    setSearchOpen(false)
+  }
+
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
       if (!searchContainerRef.current || searchContainerRef.current.contains(event.target as Node)) {
         return
       }
-      setSearchOpen(false)
+      closeSearch()
     }
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setSearchOpen(false)
+        closeSearch()
       }
     }
 
@@ -369,8 +376,8 @@ export function AppShell({ children }: AppShellProps) {
                     }}
                     onKeyDown={event => {
                       if (event.key === 'Escape') {
-                        setSearchQuery('')
-                        setSearchOpen(false)
+                        event.preventDefault()
+                        closeSearch(true)
                       }
                     }}
                     placeholder="Pesquisar cenários, execuções e ambientes"
