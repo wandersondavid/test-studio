@@ -62,7 +62,7 @@ notificationChannelRouter.post('/:id/test', async (req: Request, res: Response, 
         body: JSON.stringify(body),
       })
       if (!resp.ok) {
-        res.status(502).json({ error: `Webhook respondeu com status ${resp.status}` })
+        res.status(502).json({ error: `Webhook respondeu com status ${resp.status}: ${resp.statusText}` })
         return
       }
     } catch (fetchErr) {

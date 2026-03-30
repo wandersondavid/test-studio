@@ -30,7 +30,7 @@ export class NotificationChannelService {
 function buildEventForStatus(status: ITestRun['status']): Array<'on_pass' | 'on_fail' | 'always'> {
   if (status === 'passed') return ['on_pass', 'always']
   if (status === 'failed' || status === 'error') return ['on_fail', 'always']
-  return ['always']
+  return []
 }
 
 function buildSlackPayload(run: ITestRun, caseName: string): Record<string, unknown> {

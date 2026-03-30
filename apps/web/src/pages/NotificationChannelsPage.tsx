@@ -7,6 +7,7 @@ import type {
 } from '@test-studio/shared-types'
 import { notificationChannelsApi } from '../services/notificationChannels'
 import { PageHeader } from '../components/ui/PageHeader'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 
 const EVENT_LABELS: Record<NotificationEvent, string> = {
   on_pass: 'On Pass',
@@ -34,6 +35,7 @@ export function NotificationChannelsPage() {
   const [form, setForm] = useState<CreateNotificationChannelInput>(emptyForm())
   const [saving, setSaving] = useState(false)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
 
   function showToast(message: string, kind: 'success' | 'error') {
     setToast({ message, kind })
@@ -101,13 +103,19 @@ export function NotificationChannelsPage() {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Deletar o canal "${name}"?`)) return
+    setConfirmDelete({ id, name })
+  }
+
+  async function confirmDeleteChannel() {
+    if (!confirmDelete) return
     try {
-      await notificationChannelsApi.delete(id)
+      await notificationChannelsApi.delete(confirmDelete.id)
       showToast('Canal removido.', 'success')
       load()
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Erro ao deletar', 'error')
+    } finally {
+      setConfirmDelete(null)
     }
   }
 
@@ -337,6 +345,16 @@ export function NotificationChannelsPage() {
           </div>
         </section>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Deletar canal"
+        description={`Tem certeza que deseja deletar o canal "${confirmDelete?.name}"? Esta ação não pode ser desfeita.`}
+        confirmLabel="Deletar"
+        tone="danger"
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={confirmDeleteChannel}
+      />
     </div>
   )
 }

@@ -217,8 +217,8 @@ testRunRouter.patch('/:id/result', requireRunnerSecret, async (req: Request, res
     if (!updated) { res.status(404).json({ error: 'Não encontrado' }); return }
     res.json(updated)
 
-    const finalStatuses = ['passed', 'failed', 'error'] as const
-    if (finalStatuses.includes(updated.status as typeof finalStatuses[number])) {
+    const finalStatuses: Array<'passed' | 'failed' | 'error'> = ['passed', 'failed', 'error']
+    if (finalStatuses.includes(updated.status as 'passed' | 'failed' | 'error')) {
       const [testCase, channels] = await Promise.all([
         caseService.findById(updated.caseId),
         notificationChannelService.findActive(),
