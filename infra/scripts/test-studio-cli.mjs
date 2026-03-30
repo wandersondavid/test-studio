@@ -203,7 +203,7 @@ function buildPipelineReport(runs, context = {}) {
     })) ?? [],
   }))
 
-  const failedRuns = summaries.filter(run => run.status !== 'passed' || run.failedSteps > 0)
+  const failedRuns = summaries.filter(run => run.status !== 'passed')
 
   return {
     generatedAt: new Date().toISOString(),
@@ -254,12 +254,8 @@ async function finalizePipelineRun(runs, context, output) {
   const report = buildPipelineReport(runs, context)
   await writePipelineReport(report, output)
 
-  if (report.totals.failed > 0) {
-    process.exitCode = 1
-    return
-  }
-
-  process.exitCode = 0
+  const exitCode = report.totals.failed > 0 ? 1 : 0
+  process.exit(exitCode)
 }
 
 function printRunSnapshot(run, context = {}) {

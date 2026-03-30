@@ -52,7 +52,7 @@ npm run test-studio -- run --environment "LOCAL DEV" --all
 ## Executar uma suite inteira
 
 ```bash
-npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN"
+npm run test-studio -- run --environment "LOCAL DEV" --suite "Fluxo de Login"
 ```
 
 ## Executar e acompanhar no terminal
@@ -60,7 +60,7 @@ npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN"
 ```bash
 npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --wait
 npm run test-studio -- run --environment "LOCAL DEV" --all --wait
-npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN" --wait
+npm run test-studio -- run --environment "LOCAL DEV" --suite "Fluxo de Login" --wait
 ```
 
 Com `--wait`, o CLI continua no terminal ate os runs terminarem e mostra:
@@ -81,7 +81,7 @@ Esse modo:
 - retorna exit code `1` quando houver falha
 
 ```bash
-npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN" --ci --output ./artifacts/test-studio-report.json
+npm run test-studio -- run --environment "LOCAL DEV" --suite "Fluxo de Login" --ci --output ./artifacts/test-studio-report.json
 npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --ci --output -
 ```
 
