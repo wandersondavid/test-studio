@@ -1,0 +1,2059 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Studio - Testes E2E visuais com Playwright</title>
+  <meta
+    name="description"
+    content="Grave cenarios reais, reutilize setups de login, rode em local ou dev e acompanhe cada step com preview, logs e artifacts."
+  >
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;700;800;900&family=Instrument+Serif:ital@0;1&display=swap');
+
+    :root {
+      --bg: #f6f3ec;
+      --ink: #0d0d0d;
+      --ink-soft: #1d1d1d;
+      --muted: #67645f;
+      --card: #ffffff;
+      --border: #e3ddd2;
+      --border-strong: #d6cfbf;
+      --lime: #c6f56f;
+      --lime-dark: #9ad021;
+      --blue: #5f7bf8;
+      --teal: #00c19a;
+      --coral: #ff6c4f;
+      --ink-panel: #0f1115;
+      --ink-panel-soft: #171a20;
+      --ink-panel-muted: rgba(255,255,255,0.46);
+      --shadow: 0 22px 60px rgba(10, 10, 10, 0.12);
+    }
+
+    * , *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Cabinet Grotesk', sans-serif;
+      overflow-x: hidden;
+      cursor: none;
+    }
+
+    a, button { cursor: none; }
+
+    .cursor {
+      width: 12px;
+      height: 12px;
+      background: var(--ink);
+      border-radius: 999px;
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+      transition: width 0.18s ease, height 0.18s ease, transform 0.1s linear;
+    }
+
+    .cursor-ring {
+      width: 36px;
+      height: 36px;
+      border: 1.5px solid var(--ink);
+      border-radius: 999px;
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -50%);
+      z-index: 9998;
+      pointer-events: none;
+      opacity: 0.35;
+      transition: opacity 0.18s ease, width 0.18s ease, height 0.18s ease, transform 0.14s ease-out;
+    }
+
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 68px;
+      padding: 0 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(246, 243, 236, 0.88);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(13, 13, 13, 0.08);
+      z-index: 100;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    }
+
+    nav.scrolled {
+      box-shadow: 0 10px 30px rgba(13, 13, 13, 0.06);
+      border-color: rgba(13, 13, 13, 0.1);
+    }
+
+    .nav-logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.05rem;
+      font-weight: 900;
+      letter-spacing: -0.6px;
+    }
+
+    .logo-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      background:
+        radial-gradient(circle at 28% 30%, rgba(255,255,255,0.5), transparent 42%),
+        linear-gradient(135deg, var(--blue), var(--teal));
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
+    }
+
+    .logo-mark::after {
+      content: "TS";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: -0.6px;
+    }
+
+    .nav-links {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: color 0.18s ease;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+
+    .nav-cta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-ghost,
+    .btn-primary,
+    .btn-hero,
+    .btn-plan {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-decoration: none;
+      border-radius: 999px;
+      font-weight: 800;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    }
+
+    .btn-ghost {
+      padding: 8px 18px;
+      font-size: 0.8rem;
+      color: var(--ink);
+      border: 1.5px solid var(--border);
+      background: transparent;
+    }
+
+    .btn-ghost:hover {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      padding: 8px 20px;
+      font-size: 0.8rem;
+      color: #fff;
+      background: var(--ink);
+      border: 1.5px solid var(--ink);
+    }
+
+    .btn-primary:hover {
+      background: #232323;
+      transform: translateY(-1px);
+      box-shadow: 0 10px 26px rgba(13, 13, 13, 0.18);
+    }
+
+    .hero {
+      min-height: 100vh;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 132px 40px 88px;
+      overflow: hidden;
+    }
+
+    .hero-grid {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.45;
+      background-image:
+        linear-gradient(rgba(227, 221, 210, 0.7) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(227, 221, 210, 0.7) 1px, transparent 1px);
+      background-size: 64px 64px;
+    }
+
+    .hero-blob {
+      position: absolute;
+      inset: auto;
+      width: 860px;
+      height: 860px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(198, 245, 111, 0.22) 0%, rgba(95, 123, 248, 0.08) 38%, transparent 72%);
+      left: 50%;
+      top: 45%;
+      transform: translate(-50%, -50%);
+      filter: blur(6px);
+      pointer-events: none;
+      animation: pulse-blob 7s ease-in-out infinite;
+    }
+
+    @keyframes pulse-blob {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.64; }
+      50% { transform: translate(-50%, -50%) scale(1.08); opacity: 0.92; }
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px 6px 8px;
+      border-radius: 999px;
+      border: 1.5px solid var(--border);
+      background: rgba(255,255,255,0.8);
+      font-size: 0.72rem;
+      font-weight: 800;
+      margin-bottom: 28px;
+      animation: fade-up 0.55s ease both;
+    }
+
+    .badge-pill {
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--lime);
+      color: #000;
+      font-size: 0.64rem;
+      font-weight: 900;
+      letter-spacing: 0.2px;
+    }
+
+    h1 {
+      font-size: clamp(3rem, 6.8vw, 6.4rem);
+      line-height: 0.94;
+      letter-spacing: -3px;
+      font-weight: 900;
+      max-width: 1040px;
+      margin-bottom: 28px;
+      animation: fade-up 0.55s 0.08s ease both;
+      position: relative;
+    }
+
+    h1 em {
+      font-family: 'Instrument Serif', serif;
+      font-style: italic;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .hero-sub {
+      max-width: 700px;
+      font-size: 1.1rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 38px;
+      animation: fade-up 0.55s 0.16s ease both;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      animation: fade-up 0.55s 0.24s ease both;
+    }
+
+    .btn-hero {
+      padding: 16px 34px;
+      font-size: 0.94rem;
+      border: 2px solid transparent;
+    }
+
+    .btn-hero-main {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    .btn-hero-main:hover {
+      background: #202020;
+      transform: translateY(-2px);
+      box-shadow: 0 18px 34px rgba(13, 13, 13, 0.18);
+    }
+
+    .btn-hero-sec {
+      color: var(--ink);
+      border-color: var(--border-strong);
+      background: rgba(255,255,255,0.64);
+    }
+
+    .btn-hero-sec:hover {
+      border-color: var(--ink);
+      transform: translateY(-2px);
+    }
+
+    .hero-note {
+      margin-top: 16px;
+      font-size: 0.74rem;
+      color: var(--muted);
+      animation: fade-up 0.55s 0.3s ease both;
+    }
+
+    .hero-preview {
+      width: 100%;
+      max-width: 1040px;
+      margin-top: 64px;
+      animation: fade-up 0.75s 0.42s ease both;
+      position: relative;
+    }
+
+    .preview-window {
+      background: var(--ink-panel);
+      color: #fff;
+      border-radius: 22px;
+      padding: 24px;
+      box-shadow:
+        0 36px 90px rgba(13, 13, 13, 0.25),
+        inset 0 0 0 1px rgba(255,255,255,0.04);
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .preview-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .preview-bar-left,
+    .preview-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .preview-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      opacity: 0.95;
+    }
+
+    .preview-path {
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      font-size: 0.68rem;
+      color: rgba(255,255,255,0.66);
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .preview-chip {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(198,245,111,0.12);
+      color: var(--lime);
+      font-size: 0.66rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .preview-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .preview-tab {
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 0.66rem;
+      font-weight: 800;
+      color: rgba(255,255,255,0.36);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .preview-tab.active {
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .preview-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .preview-stat {
+      padding: 16px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .preview-stat-num {
+      font-size: 1.6rem;
+      font-weight: 900;
+      line-height: 1;
+      margin-bottom: 6px;
+      letter-spacing: -1px;
+    }
+
+    .preview-stat-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 1.3px;
+      color: rgba(255,255,255,0.36);
+    }
+
+    .preview-bottom {
+      display: grid;
+      grid-template-columns: 1.8fr 1fr;
+      gap: 10px;
+    }
+
+    .preview-panel {
+      border-radius: 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 16px;
+    }
+
+    .panel-label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: rgba(255,255,255,0.34);
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+
+    .run-row,
+    .health-row {
+      display: grid;
+      grid-template-columns: 1.3fr 0.8fr 0.7fr 0.6fr;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.72rem;
+    }
+
+    .run-row:last-child,
+    .health-row:last-child {
+      border-bottom: none;
+    }
+
+    .run-name { color: rgba(255,255,255,0.78); }
+    .run-env,
+    .run-time,
+    .health-label { color: rgba(255,255,255,0.42); }
+    .run-status,
+    .health-value {
+      font-weight: 800;
+      justify-self: end;
+    }
+
+    .status-pass { color: var(--lime); }
+    .status-running { color: #9fb6ff; }
+    .status-warn { color: #ffcb7f; }
+    .status-fail { color: #ff8570; }
+
+    .terminal {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.05);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.72rem;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.72);
+      overflow-x: auto;
+    }
+
+    .terminal .prompt { color: rgba(255,255,255,0.34); }
+    .terminal .success { color: var(--lime); }
+
+    .marquee-section {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.72);
+      overflow: hidden;
+      padding: 20px 0;
+    }
+
+    .marquee-track {
+      display: flex;
+      align-items: center;
+      gap: 48px;
+      white-space: nowrap;
+      animation: marquee 24s linear infinite;
+    }
+
+    .marquee-item {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.8px;
+    }
+
+    .marquee-item::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--lime-dark);
+      display: inline-block;
+    }
+
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 100px 40px;
+    }
+
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--muted);
+    }
+
+    .section-label::before {
+      content: "";
+      width: 16px;
+      height: 2px;
+      background: var(--lime-dark);
+      display: block;
+    }
+
+    h2 {
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 1.05;
+      letter-spacing: -2px;
+      font-weight: 900;
+      margin-bottom: 16px;
+    }
+
+    h2 em {
+      font-family: 'Instrument Serif', serif;
+      font-style: italic;
+      font-weight: 400;
+    }
+
+    .section-sub {
+      max-width: 620px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.68;
+    }
+
+    .modules-grid,
+    .steps-grid {
+      display: grid;
+      gap: 2px;
+      background: var(--border);
+      border: 2px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+      margin-top: 58px;
+    }
+
+    .modules-grid { grid-template-columns: repeat(5, 1fr); }
+    .steps-grid { grid-template-columns: repeat(3, 1fr); }
+
+    .module-card,
+    .step-card {
+      background: var(--card);
+      transition: background 0.2s ease, transform 0.2s ease;
+      position: relative;
+    }
+
+    .module-card {
+      padding: 28px 24px;
+    }
+
+    .module-card:hover,
+    .step-card:hover {
+      background: #fcfbf8;
+    }
+
+    .module-card.active {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .module-phase,
+    .step-tag,
+    .phase-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-size: 0.58rem;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .module-phase {
+      padding: 4px 9px;
+      margin-bottom: 12px;
+    }
+
+    .phase-now { background: var(--lime); color: #000; }
+    .phase-v2 { background: rgba(95,123,248,0.12); color: var(--blue); }
+    .phase-v3 { background: rgba(0,193,154,0.12); color: var(--teal); }
+
+    .module-card.active .module-phase {
+      background: var(--lime);
+      color: #000;
+    }
+
+    .module-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(13,13,13,0.06);
+      font-size: 0.86rem;
+      font-weight: 900;
+      margin-bottom: 14px;
+      letter-spacing: -0.4px;
+    }
+
+    .module-card.active .module-icon {
+      background: rgba(255,255,255,0.08);
+    }
+
+    .module-card h4 {
+      font-size: 0.92rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      letter-spacing: -0.4px;
+    }
+
+    .module-card p {
+      font-size: 0.76rem;
+      line-height: 1.58;
+      color: var(--muted);
+    }
+
+    .module-card.active p {
+      color: rgba(255,255,255,0.56);
+    }
+
+    .step-card {
+      padding: 40px 36px;
+    }
+
+    .step-num {
+      font-family: 'Instrument Serif', serif;
+      font-size: 4rem;
+      color: var(--border);
+      line-height: 1;
+      margin-bottom: 24px;
+    }
+
+    .step-card h3 {
+      font-size: 1.18rem;
+      font-weight: 800;
+      letter-spacing: -0.4px;
+      margin-bottom: 12px;
+    }
+
+    .step-card p {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.7;
+    }
+
+    .step-tag {
+      margin-top: 20px;
+      padding: 4px 12px;
+      background: var(--lime);
+      color: #000;
+    }
+
+    .features-section {
+      padding: 100px 0;
+    }
+
+    .features-header {
+      max-width: 1200px;
+      margin: 0 auto 60px;
+      padding: 0 40px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 2px;
+      background: var(--border);
+      border-top: 2px solid var(--border);
+      border-bottom: 2px solid var(--border);
+    }
+
+    .feature-card {
+      position: relative;
+      overflow: hidden;
+      background: var(--card);
+      padding: 48px;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .feature-card:hover {
+      background: #fffefb;
+    }
+
+    .feature-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.84rem;
+      font-weight: 900;
+      margin-bottom: 24px;
+      letter-spacing: -0.4px;
+      border: 1px solid rgba(13,13,13,0.06);
+    }
+
+    .feature-card h3 {
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      margin-bottom: 12px;
+    }
+
+    .feature-card p {
+      max-width: 420px;
+      font-size: 0.86rem;
+      line-height: 1.72;
+      color: var(--muted);
+    }
+
+    .feature-accent {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      opacity: 0.06;
+      pointer-events: none;
+    }
+
+    .metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 48px;
+      font-size: 0.86rem;
+    }
+
+    .metrics-table th {
+      text-align: left;
+      padding: 12px 16px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .metrics-table th:first-child { border-radius: 12px 0 0 0; }
+    .metrics-table th:last-child { border-radius: 0 12px 0 0; }
+
+    .metrics-table td {
+      padding: 15px 16px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .metrics-table tr:last-child td { border-bottom: none; }
+    .metrics-table tr:last-child td:first-child { border-radius: 0 0 0 12px; }
+    .metrics-table tr:last-child td:last-child { border-radius: 0 0 12px 0; }
+    .metrics-table tr:hover td { background: #fcfaf6; }
+
+    .phase-chip {
+      padding: 4px 10px;
+    }
+
+    .integrations-grid {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 48px;
+    }
+
+    .integration-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 20px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      font-size: 0.82rem;
+      font-weight: 800;
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+
+    .integration-chip:hover {
+      border-color: var(--ink);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(13,13,13,0.08);
+    }
+
+    .int-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+
+    .metrics-section {
+      max-width: calc(1200px - 80px);
+      margin: 0 auto;
+      padding: 80px;
+      border-radius: 28px;
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 40px;
+      margin-top: 56px;
+    }
+
+    .metric-num {
+      color: var(--lime);
+      font-size: 3.2rem;
+      line-height: 1;
+      letter-spacing: -2.6px;
+      font-weight: 900;
+      margin-bottom: 10px;
+    }
+
+    .metric-label {
+      color: rgba(255,255,255,0.48);
+      font-size: 0.84rem;
+      line-height: 1.6;
+    }
+
+    .pricing-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 48px;
+    }
+
+    .toggle-label {
+      font-size: 0.82rem;
+      font-weight: 800;
+    }
+
+    .toggle-label.muted {
+      color: var(--muted);
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      border-radius: 999px;
+      background: var(--border);
+      transition: background 0.2s ease;
+    }
+
+    .toggle-switch.active {
+      background: var(--ink);
+    }
+
+    .toggle-knob {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #fff;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    }
+
+    .toggle-switch.active .toggle-knob {
+      transform: translateX(20px);
+    }
+
+    .discount-badge {
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--lime);
+      color: #000;
+      font-size: 0.62rem;
+      font-weight: 900;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .pricing-card {
+      position: relative;
+      padding: 36px;
+      border-radius: 22px;
+      border: 2px solid var(--border);
+      background: var(--card);
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      text-align: left;
+    }
+
+    .pricing-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 18px 40px rgba(13,13,13,0.1);
+    }
+
+    .pricing-card.featured {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    .pricing-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--lime);
+      color: #000;
+      font-size: 0.6rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+    }
+
+    .pricing-name {
+      font-size: 1.1rem;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .pricing-desc {
+      font-size: 0.78rem;
+      line-height: 1.6;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    .featured .pricing-desc {
+      color: rgba(255,255,255,0.48);
+    }
+
+    .pricing-price {
+      font-size: 2.8rem;
+      line-height: 1;
+      letter-spacing: -2px;
+      font-weight: 900;
+      margin-bottom: 6px;
+    }
+
+    .pricing-price-original {
+      min-height: 22px;
+      margin-bottom: 2px;
+      font-size: 1rem;
+      color: var(--muted);
+      text-decoration: line-through;
+    }
+
+    .featured .pricing-price-original {
+      color: rgba(255,255,255,0.28);
+    }
+
+    .pricing-period {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    .featured .pricing-period {
+      color: rgba(255,255,255,0.42);
+    }
+
+    .pricing-divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 24px;
+    }
+
+    .featured .pricing-divider {
+      background: rgba(255,255,255,0.12);
+    }
+
+    .pricing-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .pricing-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.8rem;
+      line-height: 1.46;
+    }
+
+    .pricing-features li::before {
+      content: "✓";
+      color: var(--lime-dark);
+      font-weight: 900;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }
+
+    .featured .pricing-features li::before {
+      color: var(--lime);
+    }
+
+    .pricing-features li.locked {
+      opacity: 0.38;
+    }
+
+    .pricing-features li.locked::before {
+      content: "-";
+      color: var(--muted);
+    }
+
+    .btn-plan {
+      width: 100%;
+      padding: 14px;
+      font-size: 0.84rem;
+      color: var(--ink);
+      background: transparent;
+      border: 2px solid var(--border);
+    }
+
+    .btn-plan:hover {
+      border-color: var(--ink);
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .btn-plan-featured {
+      border-color: var(--lime);
+      background: var(--lime);
+      color: #000;
+    }
+
+    .btn-plan-featured:hover {
+      background: var(--lime-dark);
+      border-color: var(--lime-dark);
+      color: #000;
+    }
+
+    .faq-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 48px;
+    }
+
+    .faq-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .faq-item:first-child { border-radius: 12px 12px 0 0; }
+    .faq-item:last-child { border-radius: 0 0 12px 12px; }
+
+    .faq-question {
+      width: 100%;
+      border: none;
+      background: transparent;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      text-align: left;
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: var(--ink);
+      transition: background 0.18s ease;
+    }
+
+    .faq-question:hover {
+      background: #fbf9f4;
+    }
+
+    .faq-question::after {
+      content: "+";
+      font-size: 1.2rem;
+      color: var(--muted);
+    }
+
+    .faq-item.open .faq-question::after {
+      content: "-";
+    }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      padding: 0 24px;
+      transition: max-height 0.28s ease, padding 0.28s ease;
+      font-size: 0.86rem;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    .faq-item.open .faq-answer {
+      max-height: 240px;
+      padding: 0 24px 20px;
+    }
+
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 60px;
+    }
+
+    .testimonial-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 18px;
+      padding: 32px;
+      transition: transform 0.18s ease, border-color 0.18s ease;
+    }
+
+    .testimonial-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--lime-dark);
+    }
+
+    .testimonial-stars {
+      font-size: 0.66rem;
+      letter-spacing: 2px;
+      color: var(--lime-dark);
+      margin-bottom: 16px;
+      font-weight: 900;
+    }
+
+    .testimonial-text {
+      font-size: 0.88rem;
+      line-height: 1.72;
+      color: var(--ink-soft);
+      margin-bottom: 24px;
+      font-style: italic;
+    }
+
+    .testimonial-author {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .author-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(95,123,248,0.14), rgba(0,193,154,0.18));
+      font-size: 0.8rem;
+      font-weight: 900;
+    }
+
+    .author-info {
+      font-size: 0.72rem;
+    }
+
+    .author-name {
+      font-weight: 900;
+    }
+
+    .author-role {
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .cta-section {
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+      padding: 120px 40px;
+    }
+
+    .cta-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 50%, rgba(198,245,111,0.18) 0%, rgba(95,123,248,0.06) 34%, transparent 72%);
+    }
+
+    footer {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 40px 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    footer a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.55s ease, transform 0.55s ease;
+    }
+
+    .reveal.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @keyframes fade-up {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 1120px) {
+      .modules-grid { grid-template-columns: 1fr 1fr; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .pricing-grid,
+      .testimonials-grid { grid-template-columns: 1fr; }
+      .preview-stats { grid-template-columns: repeat(2, 1fr); }
+      .preview-bottom { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 920px) {
+      nav {
+        padding: 0 20px;
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      section {
+        padding: 84px 20px;
+      }
+
+      .features-header {
+        padding: 0 20px;
+      }
+
+      .features-grid,
+      .steps-grid,
+      .modules-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics-section {
+        margin: 0 20px;
+        max-width: none;
+        padding: 56px 28px;
+      }
+
+      .hero {
+        padding: 116px 20px 80px;
+      }
+
+      .hero-preview {
+        margin-top: 44px;
+      }
+
+      .preview-window {
+        padding: 18px;
+      }
+
+      .run-row,
+      .health-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      .run-status,
+      .health-value {
+        justify-self: start;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        cursor: auto;
+      }
+
+      .cursor,
+      .cursor-ring {
+        display: none;
+      }
+
+      .nav-cta .btn-ghost {
+        display: none;
+      }
+
+      h1 {
+        letter-spacing: -2px;
+      }
+
+      .hero-sub {
+        font-size: 1rem;
+      }
+
+      .hero-actions {
+        width: 100%;
+      }
+
+      .btn-hero {
+        width: 100%;
+      }
+
+      .preview-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .preview-bar-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .preview-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .feature-card,
+      .pricing-card,
+      .testimonial-card {
+        padding: 28px;
+      }
+
+      .metrics-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+
+      footer {
+        padding: 28px 20px 52px;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="cursor"></div>
+  <div class="cursor-ring"></div>
+
+  <nav id="nav">
+    <div class="nav-logo">
+      <span class="logo-mark" aria-hidden="true"></span>
+      <span>Test Studio</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#plataforma">Plataforma</a></li>
+      <li><a href="#como-funciona">Fluxo</a></li>
+      <li><a href="#funcionalidades">Recursos</a></li>
+      <li><a href="#adocao">Adocao</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a class="btn-ghost" href="#funcionalidades">Ver recursos</a>
+      <a class="btn-primary" href="/">Abrir builder</a>
+    </div>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-grid"></div>
+    <div class="hero-blob"></div>
+
+    <div class="hero-badge">
+      <span class="badge-pill">Internal-first</span>
+      <span>Playwright real, recorder visual e reuso de cenarios</span>
+    </div>
+
+    <h1>
+      Testes E2E visuais para sistemas internos que exigem <em>fluxo real</em>.
+    </h1>
+
+    <p class="hero-sub">
+      Grave no preview, reutilize login e setup base, rode em local ou dev, acompanhe cada step com screenshot, logs e retry para fluxos assincronos. Tudo sem obrigar o time a escrever Playwright do zero.
+    </p>
+
+    <div class="hero-actions">
+      <a href="/" class="btn-hero btn-hero-main">Entrar no Test Studio</a>
+      <a href="#como-funciona" class="btn-hero btn-hero-sec">Ver como funciona</a>
+    </div>
+
+    <p class="hero-note">
+      Local-first, self-hosted friendly, MongoDB + Node + Playwright + CLI no mesmo produto.
+    </p>
+
+    <div class="hero-preview">
+      <div class="preview-window">
+        <div class="preview-bar">
+          <div class="preview-bar-left">
+            <span class="preview-dot" style="background:#ff6d6d"></span>
+            <span class="preview-dot" style="background:#ffcb66"></span>
+            <span class="preview-dot" style="background:#8ed968"></span>
+            <div class="preview-path">LOCAL DEV / recorder / setup-base / replay / run-detail</div>
+          </div>
+          <div class="preview-bar-right">
+            <span class="preview-chip">Recorder ativo</span>
+            <span class="preview-chip" style="background:rgba(95,123,248,0.12); color:#a7b8ff;">JWT + audit</span>
+          </div>
+        </div>
+
+        <div class="preview-tabs">
+          <span class="preview-tab active">Builder</span>
+          <span class="preview-tab">Preview por step</span>
+          <span class="preview-tab">CLI</span>
+          <span class="preview-tab">Retry async</span>
+        </div>
+
+        <div class="preview-stats">
+          <div class="preview-stat">
+            <div class="preview-stat-num">9</div>
+            <div class="preview-stat-label">steps MVP prontos</div>
+          </div>
+          <div class="preview-stat">
+            <div class="preview-stat-num">1</div>
+            <div class="preview-stat-label">setup base reutilizavel</div>
+          </div>
+          <div class="preview-stat">
+            <div class="preview-stat-num">2</div>
+            <div class="preview-stat-label">formas de execucao</div>
+          </div>
+          <div class="preview-stat">
+            <div class="preview-stat-num">100%</div>
+            <div class="preview-stat-label">browser Playwright real</div>
+          </div>
+        </div>
+
+        <div class="preview-bottom">
+          <div class="preview-panel">
+            <span class="panel-label">Ultimas execucoes</span>
+            <div class="run-row">
+              <span class="run-name">LOGIN BASE + EMISSAO</span>
+              <span class="run-env">LOCAL DEV</span>
+              <span class="run-time">17.5s</span>
+              <span class="run-status status-pass">passed</span>
+            </div>
+            <div class="run-row">
+              <span class="run-name">CARGA-GR / retry em fila</span>
+              <span class="run-env">DEV</span>
+              <span class="run-time">61.2s</span>
+              <span class="run-status status-running">running</span>
+            </div>
+            <div class="run-row">
+              <span class="run-name">REGRAVAR DAQUI / step 12</span>
+              <span class="run-env">LOCAL DEV</span>
+              <span class="run-time">9.4s</span>
+              <span class="run-status status-warn">waiting</span>
+            </div>
+            <div class="terminal">
+              <span class="prompt">$</span> npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN" --wait<br>
+              Cenarios na fila: 7<br>
+              Enfileirado: LOGIN -&gt; run 69c980...<br>
+              <span class="success">Resultado final: passed</span>
+            </div>
+          </div>
+
+          <div class="preview-panel">
+            <span class="panel-label">Capacidades do produto</span>
+            <div class="health-row">
+              <span class="health-label">Recorder visual</span>
+              <span class="health-value status-pass">ativo</span>
+            </div>
+            <div class="health-row">
+              <span class="health-label">Preview por step</span>
+              <span class="health-value status-pass">pronto</span>
+            </div>
+            <div class="health-row">
+              <span class="health-label">Blocos parametrizados</span>
+              <span class="health-value status-pass">pronto</span>
+            </div>
+            <div class="health-row">
+              <span class="health-label">waitForApi + retry</span>
+              <span class="health-value status-pass">pronto</span>
+            </div>
+            <div class="health-row">
+              <span class="health-label">Scheduler + webhook</span>
+              <span class="health-value status-warn">proximo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="marquee-section">
+    <div class="marquee-track">
+      <span class="marquee-item">Recorder Playwright real</span>
+      <span class="marquee-item">Setup base reutilizavel</span>
+      <span class="marquee-item">Record from here</span>
+      <span class="marquee-item">Preview por step</span>
+      <span class="marquee-item">Retry assincrono</span>
+      <span class="marquee-item">waitForApi</span>
+      <span class="marquee-item">CLI autenticado</span>
+      <span class="marquee-item">Self-healing de seletor</span>
+      <span class="marquee-item">MongoDB + JWT + audit</span>
+      <span class="marquee-item">Recorder Playwright real</span>
+      <span class="marquee-item">Setup base reutilizavel</span>
+      <span class="marquee-item">Record from here</span>
+      <span class="marquee-item">Preview por step</span>
+      <span class="marquee-item">Retry assincrono</span>
+      <span class="marquee-item">waitForApi</span>
+      <span class="marquee-item">CLI autenticado</span>
+      <span class="marquee-item">Self-healing de seletor</span>
+      <span class="marquee-item">MongoDB + JWT + audit</span>
+    </div>
+  </div>
+
+  <section id="plataforma">
+    <span class="section-label">Plataforma</span>
+    <h2>Um fluxo unico para gravar, reaproveitar e executar testes em <em>ambientes reais</em>.</h2>
+    <p class="section-sub">
+      O Test Studio foi pensado para times internos que precisam validar portal, ERP, operacao, emissao e processos assincronos sem transformar toda melhoria em codigo manual de automacao.
+    </p>
+
+    <div class="modules-grid reveal">
+      <div class="module-card active">
+        <div class="module-phase phase-now">Agora</div>
+        <div class="module-icon">REC</div>
+        <h4>Builder + recorder</h4>
+        <p>Crie cenarios no preview visual, grave steps automaticamente e continue a partir de qualquer ponto com record from here.</p>
+      </div>
+      <div class="module-card">
+        <div class="module-phase phase-now">Agora</div>
+        <div class="module-icon">SET</div>
+        <h4>Setup base reutilizavel</h4>
+        <p>Transforme login e pre-condicoes em cenarios base para iniciar novos fluxos ja autenticados e economizar regravacao.</p>
+      </div>
+      <div class="module-card">
+        <div class="module-phase phase-now">Agora</div>
+        <div class="module-icon">DBG</div>
+        <h4>Debug por step</h4>
+        <p>Abra o detalhe da execucao, clique em qualquer etapa e veja screenshot, erro, console e rede sem sair do produto.</p>
+      </div>
+      <div class="module-card">
+        <div class="module-phase phase-v2">V2</div>
+        <div class="module-icon">RUN</div>
+        <h4>Execucao continua</h4>
+        <p>Agendamento, webhook, Slack e reteste automatico para transformar cenarios criticos em monitoramento continuo.</p>
+      </div>
+      <div class="module-card">
+        <div class="module-phase phase-v3">V3</div>
+        <div class="module-icon">VER</div>
+        <h4>Versoes e governanca</h4>
+        <p>Comparar versoes, aprovar mudancas, restaurar revisoes e dar ownership claro para operacao, QA e produto.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="como-funciona">
+    <span class="section-label">Como funciona</span>
+    <h2>O fluxo pensado para o dia a dia de quem precisa testar sem travar o time.</h2>
+    <p class="section-sub">
+      O objetivo nao e so executar Playwright. E transformar gravacao, reuso, depuracao e reteste em algo simples o suficiente para ser adotado por produto, operacao e QA.
+    </p>
+
+    <div class="steps-grid reveal">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>Grave no preview</h3>
+        <p>Abra uma sessao real do browser, clique na tela, preencha campos no painel flutuante e deixe o recorder montar os steps automaticamente.</p>
+        <span class="step-tag">Playwright real</span>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>Reuse setup e blocos</h3>
+        <p>Salve login, setup base e trechos repetidos como blocos reutilizaveis com parametros. Quando precisar, aplique tudo em outra gravacao ou execucao.</p>
+        <span class="step-tag">Reuso sem duplicacao</span>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>Execute e depure</h3>
+        <p>Rode pela interface ou pelo terminal, acompanhe o run em tempo real, veja o frame de cada step e aplique retry para fluxos de fila, Rabbit ou processamento lento.</p>
+        <span class="step-tag">UI + CLI</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="features-section" id="funcionalidades">
+    <div class="features-header">
+      <span class="section-label">Recursos principais</span>
+      <h2>Os recursos que realmente importam para colocar o produto em uso <em>agora</em>.</h2>
+      <p class="section-sub">
+        A plataforma foi moldada pelos gargalos mais comuns em automacao interna: seletor fragil, login repetido, fluxo assincrono, necessidade de rerun e debug dificil.
+      </p>
+    </div>
+
+    <div class="features-grid reveal">
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(198,245,111,0.18);">REC</div>
+        <h3>Record from here</h3>
+        <p>Escolha qualquer step ja gravado e reabra o recorder no ponto certo. O produto reexecuta setup, replay parcial e deixa voce continuar sem voltar ao zero.</p>
+        <div class="feature-accent" style="background:var(--lime);"></div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(95,123,248,0.14);">SET</div>
+        <h3>Login e setup reutilizavel</h3>
+        <p>Use cenarios base e blocos com parametros para reaproveitar autenticacao, navegacao inicial e qualquer trecho repetido do fluxo.</p>
+        <div class="feature-accent" style="background:var(--blue);"></div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(0,193,154,0.14);">API</div>
+        <h3>waitForApi e retry dinamico</h3>
+        <p>Espere resposta de API, visibilidade, texto ou URL com tentativas e intervalos configuraveis. Ideal para fila, emissao e processamento assincrono.</p>
+        <div class="feature-accent" style="background:var(--teal);"></div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(255,108,79,0.14);">DBG</div>
+        <h3>Preview por step com logs</h3>
+        <p>Abra a execucao, selecione qualquer etapa e veja screenshot, console e rede para encontrar a falha sem depender apenas da stack trace.</p>
+        <div class="feature-accent" style="background:var(--coral);"></div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(13,13,13,0.06);">SEL</div>
+        <h3>Seletor mais resiliente</h3>
+        <p>O recorder prioriza <code>data-testid</code>, guarda alternativas de seletor e prepara o terreno para self-healing sem transformar cada ajuste em regravacao.</p>
+        <div class="feature-accent" style="background:var(--ink);"></div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(95,123,248,0.12);">CLI</div>
+        <h3>Operacao por UI e terminal</h3>
+        <p>Rode por cenario, suite ou tudo de uma vez via interface ou comando. O mesmo produto serve para o time visual e para automacao em fluxo local ou CI.</p>
+        <div class="feature-accent" style="background:var(--blue);"></div>
+      </div>
+    </div>
+  </div>
+
+  <section id="metricas">
+    <span class="section-label">Onde ganha valor</span>
+    <h2>Os gargalos que o produto resolve melhor do que um monte de script solto.</h2>
+    <p class="section-sub">
+      Em vez de deixar a automacao espalhada entre codigo, planilha e memoria do time, o Test Studio centraliza gravacao, execucao, diagnostico e ownership.
+    </p>
+
+    <table class="metrics-table reveal">
+      <thead>
+        <tr>
+          <th>Situacao</th>
+          <th>Hoje sem produto</th>
+          <th>Com Test Studio</th>
+          <th>Momento</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Login repetido em varios cenarios</td>
+          <td>Duplicacao de step e manutencao pesada</td>
+          <td>Setup base e blocos reutilizaveis com parametros</td>
+          <td><span class="phase-chip chip-now">Agora</span></td>
+        </tr>
+        <tr>
+          <td>Fluxo de emissao com Rabbit e espera</td>
+          <td>Timeout seco ou reteste manual do teste inteiro</td>
+          <td>Retry por step, waitForApi e polling configuravel</td>
+          <td><span class="phase-chip chip-now">Agora</span></td>
+        </tr>
+        <tr>
+          <td>Debug de falha em producao interna</td>
+          <td>Console separado, screenshot perdido, pouco contexto</td>
+          <td>Preview por step, logs de console, rede e artifacts</td>
+          <td><span class="phase-chip chip-now">Agora</span></td>
+        </tr>
+        <tr>
+          <td>Regravar um fluxo longo por pequena mudanca</td>
+          <td>Voltar do inicio e perder tempo</td>
+          <td>Record from here para continuar do ponto certo</td>
+          <td><span class="phase-chip chip-now">Agora</span></td>
+        </tr>
+        <tr>
+          <td>Executar continuamente e alertar time</td>
+          <td>Sem rotina, dependente de alguem lembrar</td>
+          <td>Scheduler, webhook e Slack em pipeline de produto</td>
+          <td><span class="phase-chip chip-v2">V2</span></td>
+        </tr>
+        <tr>
+          <td>Governanca de mudanca no cenario</td>
+          <td>Dificil saber quem mudou o que</td>
+          <td>Versionamento, comparacao e restauracao de revisao</td>
+          <td><span class="phase-chip chip-v3">V3</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="integracoes" style="text-align:center;">
+    <span class="section-label" style="justify-content:center;">Stack compativel</span>
+    <h2>Conecta com a stack que o time <em>ja usa</em>.</h2>
+    <p class="section-sub" style="margin:0 auto;">
+      O foco aqui e encaixar no fluxo real do time: app local, ambientes internos, CLI, Docker, JWT, Mongo e engine Playwright real.
+    </p>
+
+    <div class="integrations-grid reveal">
+      <span class="integration-chip"><span class="int-dot" style="background:var(--blue);"></span>Playwright</span>
+      <span class="integration-chip"><span class="int-dot" style="background:#4db33d;"></span>MongoDB</span>
+      <span class="integration-chip"><span class="int-dot" style="background:var(--teal);"></span>Docker</span>
+      <span class="integration-chip"><span class="int-dot" style="background:var(--coral);"></span>CLI</span>
+      <span class="integration-chip"><span class="int-dot" style="background:#202020;"></span>JWT Auth</span>
+      <span class="integration-chip"><span class="int-dot" style="background:var(--lime-dark);"></span>Localhost</span>
+      <span class="integration-chip"><span class="int-dot" style="background:var(--blue);"></span>Local / Dev / Hml / Prod</span>
+      <span class="integration-chip"><span class="int-dot" style="background:var(--teal);"></span>Artifacts FS / S3-ready</span>
+      <span class="integration-chip"><span class="int-dot" style="background:var(--coral);"></span>Webhook / Slack em roadmap</span>
+    </div>
+  </section>
+
+  <div class="metrics-section reveal">
+    <span class="section-label" style="color:rgba(255,255,255,0.6);">Pilares do produto</span>
+    <h2 style="color:#fff; max-width:720px;">Para concorrer de verdade, o foco precisa estar em gravacao fluida, reuso, estabilidade, debug e execucao continua.</h2>
+    <div class="metrics-grid">
+      <div>
+        <div class="metric-num">1</div>
+        <div class="metric-label">Builder visual com recorder por sessao real de browser.</div>
+      </div>
+      <div>
+        <div class="metric-num">2</div>
+        <div class="metric-label">Superficies principais de uso: interface visual e terminal autenticado.</div>
+      </div>
+      <div>
+        <div class="metric-num">9</div>
+        <div class="metric-label">Tipos de step MVP prontos para fluxos web e validacoes basicas.</div>
+      </div>
+      <div>
+        <div class="metric-num">100%</div>
+        <div class="metric-label">Executado em Playwright real, sem virar so mais um mock de automacao.</div>
+      </div>
+    </div>
+  </div>
+
+  <section id="adocao" style="text-align:center;">
+    <span class="section-label" style="justify-content:center;">Modelos de adocao</span>
+    <h2>Como isso pode nascer dentro do time sem tentar virar plataforma gigante no dia 1.</h2>
+    <p class="section-sub" style="margin:0 auto 44px;">
+      O produto pode entrar por um piloto local, crescer para uma operacao compartilhada e depois ganhar automacao continua e governanca.
+    </p>
+
+    <div class="pricing-toggle">
+      <span class="toggle-label">Piloto</span>
+      <div class="toggle-switch active" aria-hidden="true">
+        <div class="toggle-knob"></div>
+      </div>
+      <span class="toggle-label muted">Escala</span>
+      <span class="discount-badge">Roadmap claro</span>
+    </div>
+
+    <div class="pricing-grid reveal">
+      <div class="pricing-card">
+        <div class="pricing-name">Piloto local</div>
+        <div class="pricing-desc">Para validar valor rapido com um fluxo critico do time.</div>
+        <div class="pricing-price-original"></div>
+        <div class="pricing-price">MVP</div>
+        <div class="pricing-period">builder + recorder + historico + CLI</div>
+        <div class="pricing-divider"></div>
+        <ul class="pricing-features">
+          <li>Ambientes locais e dev</li>
+          <li>Gravacao visual de cenarios</li>
+          <li>Execucao por cenario ou suite</li>
+          <li>Preview por step e artifacts</li>
+          <li class="locked">Scheduler e alertas</li>
+        </ul>
+        <a class="btn-plan" href="/">Abrir ambiente</a>
+      </div>
+
+      <div class="pricing-card featured">
+        <div class="pricing-badge">Mais alinhado</div>
+        <div class="pricing-name">Workspace interno</div>
+        <div class="pricing-desc">Para consolidar QA, produto e operacao em um fluxo compartilhado.</div>
+        <div class="pricing-price-original"></div>
+        <div class="pricing-price">Core</div>
+        <div class="pricing-period">reuso, auth, audit, setup base e retry async</div>
+        <div class="pricing-divider"></div>
+        <ul class="pricing-features">
+          <li>Cenarios base e blocos parametrizados</li>
+          <li>Auth com ownership e auditoria</li>
+          <li>CLI com login e acompanhamento</li>
+          <li>waitForApi e retry dinamico</li>
+          <li>Detalhe de run com console e rede</li>
+        </ul>
+        <a class="btn-plan btn-plan-featured" href="/">Ir para o builder</a>
+      </div>
+
+      <div class="pricing-card">
+        <div class="pricing-name">Plataforma shared</div>
+        <div class="pricing-desc">Para operar execucao continua, governanca e distribuicao entre squads.</div>
+        <div class="pricing-price-original"></div>
+        <div class="pricing-price">Next</div>
+        <div class="pricing-period">scheduler, webhooks, versoes e observabilidade</div>
+        <div class="pricing-divider"></div>
+        <ul class="pricing-features">
+          <li>Agendamento por rotina</li>
+          <li>Webhook e notificacao</li>
+          <li>Versionamento de cenarios</li>
+          <li>Comparacao de execucoes</li>
+          <li>Operacao multi-time</li>
+        </ul>
+        <a class="btn-plan" href="#plataforma">Ver roadmap</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" style="max-width: 760px; margin: 0 auto; padding: 0 40px 100px;">
+    <span class="section-label">FAQ</span>
+    <h2>Perguntas que aparecem quando o produto sai do experimento e vai para o uso real.</h2>
+
+    <div class="faq-list reveal">
+      <div class="faq-item open">
+        <button class="faq-question" type="button">Isso substitui escrever Playwright manual?</button>
+        <div class="faq-answer">Nao necessariamente. O valor maior aqui e acelerar o que o time grava, executa, reusa e depura no dia a dia. Para fluxos complexos demais, o codigo continua sendo opcao. Para a maior parte do operacional interno, o builder ja reduz muito a friccao.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">Da para usar com localhost e sistema interno?</button>
+        <div class="faq-answer">Sim. O runner foi pensado para abrir localhost da maquina hospedeira, e o recorder usa uma sessao real do Playwright, o que funciona muito melhor para ambiente local e dev interno do que um iframe comum.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">Como lida com fluxo assincrono e fila?</button>
+        <div class="faq-answer">O produto ja suporta retry por step, timeout por tentativa, intervalo configuravel e waitForApi. Isso cobre bem cenarios de emissao, fila, processamento e atualizacao de tela que nao acontece instantaneamente.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">Precisa de dev para todo ajuste?</button>
+        <div class="faq-answer">Menos do que num setup classico. A ideia e que produto, operacao ou QA consigam gravar, reexecutar, depurar e ajustar muito do fluxo pela interface. O time tecnico entra mais forte nos casos de seletor ruim, integrações e evolucao da plataforma.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-question" type="button">O que ainda falta para virar produto forte?</button>
+        <div class="faq-answer">Scheduler, webhook ou Slack, versionamento de cenario e mais self-healing. O nucleo ja existe: gravacao fluida, reuso, estabilidade, debug e operacao por UI e terminal.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="section-label">Perfis ideais</span>
+    <h2>Quem mais ganha quando esse produto entra em producao interna.</h2>
+    <p class="section-sub">
+      O Test Studio nao e so para QA tradicional. Ele encaixa muito bem em times que precisam validar processo de negocio com rapidez, ownership e contexto.
+    </p>
+
+    <div class="testimonials-grid reveal">
+      <div class="testimonial-card">
+        <div class="testimonial-stars">OPERACAO</div>
+        <p class="testimonial-text">"Quando um fluxo de emissao quebra, o time precisa confirmar rapido se foi seletor, fila, tela ou regressao. O preview por step vira ferramenta de resposta."</p>
+        <div class="testimonial-author">
+          <div class="author-avatar">OP</div>
+          <div class="author-info">
+            <div class="author-name">Times de operacao</div>
+            <div class="author-role">Portais internos, backoffice e fluxos de negocio</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="testimonial-card">
+        <div class="testimonial-stars">PRODUTO</div>
+        <p class="testimonial-text">"Regravar login em todo cenario e depender de script solto trava a evolucao. Setup base, blocos reutilizaveis e record from here reduzem o retrabalho do time."</p>
+        <div class="testimonial-author">
+          <div class="author-avatar">PM</div>
+          <div class="author-info">
+            <div class="author-name">Produto e discovery</div>
+            <div class="author-role">Validacao rapida de fluxo critico antes de liberar</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="testimonial-card">
+        <div class="testimonial-stars">QA / PLATAFORMA</div>
+        <p class="testimonial-text">"O produto ainda deixa espaco para evoluir com CLI, artefatos, governanca e automacao continua. Ou seja, ele nao nasce preso a um no-code superficial."</p>
+        <div class="testimonial-author">
+          <div class="author-avatar">QA</div>
+          <div class="author-info">
+            <div class="author-name">QA e engenharia interna</div>
+            <div class="author-role">Escala, padrao de qualidade e ownership tecnico</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-section">
+    <div class="cta-bg"></div>
+    <span class="section-label" style="justify-content:center;">Proximo passo</span>
+    <h2 style="max-width: 880px; margin: 0 auto 18px;">Se a dor do time e testar fluxo critico sem transformar tudo em script manual, o Test Studio ja tem base para evoluir como <em>produto de verdade</em>.</h2>
+    <p class="section-sub" style="margin: 0 auto 34px;">
+      O nucleo esta montado: builder, recorder, setup base, retry assincrono, preview por step, execucao por suite e CLI. Agora a plataforma pode crescer em execucao continua e governanca.
+    </p>
+    <div class="hero-actions">
+      <a href="/" class="btn-hero btn-hero-main">Abrir o Test Studio</a>
+      <a href="#adocao" class="btn-hero btn-hero-sec">Ver modelos de adocao</a>
+    </div>
+    <p class="hero-note" style="margin-top:20px;">Landing estatica baseada no Pulso, reescrita para o produto de testes sem mexer na SPA principal.</p>
+  </div>
+
+  <footer>
+    <div>Test Studio - visual E2E builder para fluxos internos</div>
+    <div class="footer-links">
+      <a href="/">Builder</a>
+      <a href="#funcionalidades">Recursos</a>
+      <a href="#faq">FAQ</a>
+      <a href="/site/index.html">Landing</a>
+    </div>
+  </footer>
+
+  <script>
+    const cursor = document.querySelector('.cursor');
+    const cursorRing = document.querySelector('.cursor-ring');
+    const nav = document.getElementById('nav');
+
+    if (window.matchMedia('(pointer:fine)').matches && cursor && cursorRing) {
+      window.addEventListener('mousemove', (event) => {
+        cursor.style.left = event.clientX + 'px';
+        cursor.style.top = event.clientY + 'px';
+        cursorRing.style.left = event.clientX + 'px';
+        cursorRing.style.top = event.clientY + 'px';
+      });
+
+      document.querySelectorAll('a, button, .integration-chip, .module-card, .feature-card, .pricing-card, .testimonial-card').forEach((element) => {
+        element.addEventListener('mouseenter', () => {
+          cursor.style.width = '18px';
+          cursor.style.height = '18px';
+          cursorRing.style.width = '52px';
+          cursorRing.style.height = '52px';
+          cursorRing.style.opacity = '0.55';
+        });
+
+        element.addEventListener('mouseleave', () => {
+          cursor.style.width = '12px';
+          cursor.style.height = '12px';
+          cursorRing.style.width = '36px';
+          cursorRing.style.height = '36px';
+          cursorRing.style.opacity = '0.35';
+        });
+      });
+    }
+
+    window.addEventListener('scroll', () => {
+      if (window.scrollY > 12) {
+        nav.classList.add('scrolled');
+      } else {
+        nav.classList.remove('scrolled');
+      }
+    });
+
+    document.querySelectorAll('.faq-item').forEach((item) => {
+      const button = item.querySelector('.faq-question');
+      if (!button) {
+        return;
+      }
+
+      button.addEventListener('click', () => {
+        const wasOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item').forEach((faqItem) => faqItem.classList.remove('open'));
+        if (!wasOpen) {
+          item.classList.add('open');
+        }
+      });
+    });
+
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.14 });
+
+    document.querySelectorAll('.reveal').forEach((element) => revealObserver.observe(element));
+  </script>
+</body>
+</html>
