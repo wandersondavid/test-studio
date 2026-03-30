@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import {
   BarChart3,
@@ -173,12 +173,12 @@ export function AppShell({ children }: AppShellProps) {
   const canSearch = normalizedQuery.length >= 2
   const totalResults = searchResults.cases.length + searchResults.runs.length + searchResults.environments.length
 
-  function closeSearch(clearQuery = false) {
+  const closeSearch = useCallback((clearQuery = false) => {
     if (clearQuery) {
       setSearchQuery('')
     }
     setSearchOpen(false)
-  }
+  }, [])
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -200,7 +200,7 @@ export function AppShell({ children }: AppShellProps) {
       document.removeEventListener('mousedown', handleOutsideClick)
       document.removeEventListener('keydown', handleEscape)
     }
-  }, [])
+  }, [closeSearch])
 
   useEffect(() => {
     if (!normalizedQuery) {
@@ -263,11 +263,14 @@ export function AppShell({ children }: AppShellProps) {
 
   function handleSearchChange(value: string) {
     setSearchQuery(value)
-    if (!value.trim()) {
-      setSearchOpen(false)
+    const trimmedValue = value.trim()
+    if (!trimmedValue) {
+      closeSearch()
       return
     }
-    setSearchOpen(true)
+    if (trimmedValue.length >= 2) {
+      setSearchOpen(true)
+    }
   }
 
   function handleSearchSelect() {
@@ -370,7 +373,7 @@ export function AppShell({ children }: AppShellProps) {
                     value={searchQuery}
                     onChange={event => handleSearchChange(event.target.value)}
                     onFocus={() => {
-                      if (searchQuery.trim()) {
+                      if (canSearch) {
                         setSearchOpen(true)
                       }
                     }}
