@@ -142,12 +142,15 @@ export function SchedulesPage() {
     return new Date(dt).toLocaleString('pt-BR')
   }
 
+  const caseMap = new Map(cases.map(c => [c._id, c.name]))
+  const envMap = new Map(environments.map(e => [e._id, e.name]))
+
   function getCaseName(caseId: string): string {
-    return cases.find(c => c._id === caseId)?.name ?? caseId
+    return caseMap.get(caseId) ?? caseId
   }
 
   function getEnvName(envId: string): string {
-    return environments.find(e => e._id === envId)?.name ?? envId
+    return envMap.get(envId) ?? envId
   }
 
   if (loading) return <div className="loading-state" data-testid="loading">Carregando...</div>

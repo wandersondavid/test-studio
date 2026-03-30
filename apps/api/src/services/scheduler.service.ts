@@ -20,7 +20,7 @@ export async function startScheduler(): Promise<void> {
 }
 
 export function registerTask(schedule: ISchedule): void {
-  const id = schedule.id as string
+  const id = (schedule._id as { toString(): string }).toString()
 
   if (tasks.has(id)) {
     tasks.get(id)!.stop()
@@ -50,11 +50,19 @@ export function unregisterTask(scheduleId: string): void {
 
 async function executeScheduledRun(schedule: ISchedule): Promise<void> {
   try {
+    const caseId = schedule.caseId?.toString()
+    const environmentId = schedule.environmentId?.toString()
+
+    if (!caseId || !environmentId) {
+      console.error(`[scheduler] Schedule "${schedule.name}" is missing caseId or environmentId — skipping`)
+      return
+    }
+
     const runnerUrl = process.env.RUNNER_URL ?? 'http://localhost:3002'
 
     const run = await TestRun.create({
-      caseId: schedule.caseId.toString(),
-      environmentId: schedule.environmentId.toString(),
+      caseId,
+      environmentId,
       datasetId: schedule.datasetId?.toString(),
       status: 'running',
       requestedVia: 'scheduled',
@@ -68,15 +76,13 @@ async function executeScheduledRun(schedule: ISchedule): Promise<void> {
 
     await ScheduleModel.findByIdAndUpdate(schedule._id, { lastRunAt: new Date() })
 
-    const runPayload = { runId: run._id.toString() }
-
     fetch(`${runnerUrl}/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-runner-secret': getRunnerSharedSecret(),
       },
-      body: JSON.stringify(runPayload),
+      body: JSON.stringify({ runId: run._id.toString() }),
     }).catch(err => console.error('[scheduler] Runner trigger failed:', err))
 
     console.log(`[scheduler] Triggered run ${run._id} for schedule "${schedule.name}"`)

@@ -2,18 +2,12 @@ import { Router, Request, Response, NextFunction } from 'express'
 import { ScheduleService } from '../services/schedule.service.js'
 import { ScheduleModel } from '../models/Schedule.js'
 import { TestRunService } from '../services/testRun.service.js'
-import { TestCaseService } from '../services/testCase.service.js'
-import { EnvironmentService } from '../services/environment.service.js'
-import { DatasetService } from '../services/dataset.service.js'
 import { createScheduleSchema, updateScheduleSchema } from '../schemas/schedule.schema.js'
 import { registerTask, unregisterTask } from '../services/scheduler.service.js'
 import { getRunnerSharedSecret } from '../utils/auth.js'
 
 const scheduleService = new ScheduleService()
 const runService = new TestRunService()
-const caseService = new TestCaseService()
-const envService = new EnvironmentService()
-const datasetService = new DatasetService()
 
 export const scheduleRouter = Router()
 
@@ -64,16 +58,6 @@ scheduleRouter.post('/:id/trigger', async (req: Request, res: Response, next: Ne
     const schedule = await ScheduleModel.findById(req.params.id)
     if (!schedule) { res.status(404).json({ error: 'Agendamento não encontrado' }); return }
 
-    const [testCase, environment] = await Promise.all([
-      caseService.resolveExecutableById(schedule.caseId.toString()),
-      envService.findById(schedule.environmentId.toString()),
-    ])
-
-    if (!testCase) { res.status(404).json({ error: 'Cenário não encontrado' }); return }
-    if (!environment) { res.status(404).json({ error: 'Ambiente não encontrado' }); return }
-
-    const dataset = schedule.datasetId ? await datasetService.findById(schedule.datasetId.toString()) : null
-
     const testRun = await runService.create({
       caseId: schedule.caseId.toString(),
       environmentId: schedule.environmentId.toString(),
@@ -91,7 +75,7 @@ scheduleRouter.post('/:id/trigger', async (req: Request, res: Response, next: Ne
         'Content-Type': 'application/json',
         'x-runner-secret': getRunnerSharedSecret(),
       },
-      body: JSON.stringify({ runId: testRun.id, testCase, environment, dataset }),
+      body: JSON.stringify({ runId: testRun.id }),
     }).catch(err => {
       console.error('[schedule/trigger] Runner trigger failed:', err)
       runService.updateStatus(testRun.id, 'error')
