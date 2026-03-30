@@ -52,7 +52,7 @@ const PAGE_LABELS = new Map<string, string>([
   ['/notification-channels', 'Notificações'],
 ])
 
-const SEARCH_CACHE_TTL = 60000
+const SEARCH_CACHE_TTL_MS = 60000
 const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_MIN_CHARS = 2
 const SEARCH_RESULT_LIMIT = 5
@@ -98,7 +98,7 @@ function resolveCurrentLabel(pathname: string): string {
 }
 
 function shouldRefreshCache(cache: SearchCache | null, now: number, lastUpdated: number): boolean {
-  return !cache || now - lastUpdated > SEARCH_CACHE_TTL
+  return !cache || now - lastUpdated > SEARCH_CACHE_TTL_MS
 }
 
 function matchesSearchTerm(value: string | undefined, term: string): boolean {
@@ -247,8 +247,9 @@ export function AppShell({ children }: AppShellProps) {
       setSearchError(null)
       try {
         const now = Date.now()
-        const shouldFetch = shouldRefreshCache(searchCacheRef.current, now, searchCacheTimestampRef.current)
-        let resolvedCache: SearchCache
+        const cached = searchCacheRef.current
+        const shouldFetch = shouldRefreshCache(cached, now, searchCacheTimestampRef.current)
+        let resolvedCache = cached
 
         if (shouldFetch) {
           const [casesResponse, runsResponse, environmentsResponse] = await Promise.all([
@@ -264,18 +265,17 @@ export function AppShell({ children }: AppShellProps) {
           resolvedCache = { data, index: buildSearchIndex(data) }
           searchCacheRef.current = resolvedCache
           searchCacheTimestampRef.current = now
-        } else {
-          resolvedCache = searchCacheRef.current!
         }
 
-        if (cancelled) return
+        if (cancelled || !resolvedCache) return
         setSearchResults(buildSearchResults(resolvedCache.data, resolvedCache.index, normalizedQuery))
         setSearchOpen(true)
       } catch (error: unknown) {
         if (cancelled) return
+        console.error('[search] Falha ao carregar dados:', error)
         setSearchError(error instanceof Error && error.message
           ? error.message
-          : 'Erro ao pesquisar. Verifique conexão ou permissões.')
+          : 'Erro ao buscar dados. Verifique sua conexão ou permissões.')
       } finally {
         if (!cancelled) {
           setSearchLoading(false)
