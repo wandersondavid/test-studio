@@ -213,6 +213,7 @@ export function AppShell({ children }: AppShellProps) {
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        event.preventDefault()
         closeSearch()
       }
     }
@@ -289,8 +290,7 @@ export function AppShell({ children }: AppShellProps) {
 
   function handleSearchChange(value: string) {
     setSearchQuery(value)
-    const trimmedValue = value.trim()
-    if (!trimmedValue) {
+    if (!value.trim()) {
       closeSearch()
     }
   }
