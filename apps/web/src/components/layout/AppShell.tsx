@@ -242,7 +242,7 @@ export function AppShell({ children }: AppShellProps) {
       try {
         const now = Date.now()
         const shouldFetch = !searchCacheRef.current || now - searchCacheTimestampRef.current > SEARCH_CACHE_TTL_MS
-        let cache = searchCacheRef.current
+        let resolvedCache = searchCacheRef.current
 
         if (shouldFetch) {
           const [casesResponse, runsResponse, environmentsResponse] = await Promise.all([
@@ -255,13 +255,13 @@ export function AppShell({ children }: AppShellProps) {
             runs: runsResponse.data,
             environments: environmentsResponse.data,
           }
-          cache = { data, index: buildSearchIndex(data) }
-          searchCacheRef.current = cache
+          resolvedCache = { data, index: buildSearchIndex(data) }
+          searchCacheRef.current = resolvedCache
           searchCacheTimestampRef.current = now
         }
 
-        if (cancelled || !cache) return
-        setSearchResults(buildSearchResults(cache.data, cache.index, normalizedQuery))
+        if (cancelled || !resolvedCache) return
+        setSearchResults(buildSearchResults(resolvedCache.data, resolvedCache.index, normalizedQuery))
         setSearchOpen(true)
       } catch (error: unknown) {
         if (cancelled) return
@@ -284,10 +284,6 @@ export function AppShell({ children }: AppShellProps) {
     const trimmedValue = value.trim()
     if (!trimmedValue) {
       closeSearch()
-      return
-    }
-    if (trimmedValue.length >= SEARCH_MIN_CHARS) {
-      setSearchOpen(true)
     }
   }
 
