@@ -53,7 +53,9 @@ const PAGE_LABELS = new Map<string, string>([
 ])
 
 const SEARCH_CACHE_TTL_MS = 60_000
+const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_RESULT_LIMIT = 5
+const SEARCH_FALLBACK_DESCRIPTION = 'Sem descrição'
 
 type SearchData = {
   cases: TestCase[]
@@ -103,7 +105,7 @@ function buildSearchResults(data: SearchData, term: string): SearchResults {
     .map(testCase => ({
       id: testCase._id,
       title: testCase.name,
-      description: testCase.description ?? 'Sem descrição',
+      description: testCase.description ?? SEARCH_FALLBACK_DESCRIPTION,
       href: `/cases/${testCase._id}`,
     }))
 
@@ -179,8 +181,18 @@ export function AppShell({ children }: AppShellProps) {
       setSearchOpen(false)
     }
 
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSearchOpen(false)
+      }
+    }
+
     document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
   }, [])
 
   useEffect(() => {
@@ -234,7 +246,7 @@ export function AppShell({ children }: AppShellProps) {
           setSearchLoading(false)
         }
       }
-    }, 250)
+    }, SEARCH_DEBOUNCE_MS)
 
     return () => {
       cancelled = true
