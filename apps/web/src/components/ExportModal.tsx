@@ -16,14 +16,20 @@ export function ExportModal({ open, caseId, caseName, onClose }: ExportModalProp
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [selectedEnvId, setSelectedEnvId] = useState<string>('')
   const [loading, setLoading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
-    api.get<Environment[]>('/environments').then(res => setEnvironments(res.data)).catch(() => {})
+    api.get<Environment[]>('/environments').then(res => setEnvironments(res.data)).catch(() => {
+      // Environments are optional — failure just means no environment selection available
+    })
   }, [open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setDownloadError(null)
+      return
+    }
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
@@ -33,6 +39,7 @@ export function ExportModal({ open, caseId, caseName, onClose }: ExportModalProp
 
   async function handleDownload() {
     setLoading(true)
+    setDownloadError(null)
     try {
       const params = selectedEnvId ? `?environmentId=${selectedEnvId}` : ''
       const res = await api.get<string>(`/test-cases/${caseId}/export${params}`, {
@@ -47,6 +54,8 @@ export function ExportModal({ open, caseId, caseName, onClose }: ExportModalProp
       anchor.click()
       URL.revokeObjectURL(url)
       onClose()
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Erro ao exportar o cenário.')
     } finally {
       setLoading(false)
     }
@@ -86,6 +95,9 @@ export function ExportModal({ open, caseId, caseName, onClose }: ExportModalProp
               </option>
             ))}
           </select>
+          {downloadError && (
+            <p style={{ marginTop: 8, fontSize: 13, color: '#dc2626' }} data-testid="export-error">{downloadError}</p>
+          )}
         </div>
         <div className="confirm-dialog-actions">
           <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
