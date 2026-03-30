@@ -52,7 +52,7 @@ const PAGE_LABELS = new Map<string, string>([
   ['/notification-channels', 'Notificações'],
 ])
 
-const SEARCH_CACHE_TTL = 60_000
+const SEARCH_CACHE_TTL = 60000
 const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_MIN_CHARS = 2
 const SEARCH_RESULT_LIMIT = 5
@@ -248,7 +248,7 @@ export function AppShell({ children }: AppShellProps) {
       try {
         const now = Date.now()
         const shouldFetch = shouldRefreshCache(searchCacheRef.current, now, searchCacheTimestampRef.current)
-        let resolvedCache = searchCacheRef.current
+        let resolvedCache: SearchCache
 
         if (shouldFetch) {
           const [casesResponse, runsResponse, environmentsResponse] = await Promise.all([
@@ -264,16 +264,18 @@ export function AppShell({ children }: AppShellProps) {
           resolvedCache = { data, index: buildSearchIndex(data) }
           searchCacheRef.current = resolvedCache
           searchCacheTimestampRef.current = now
+        } else {
+          resolvedCache = searchCacheRef.current!
         }
 
-        if (cancelled || !resolvedCache) return
+        if (cancelled) return
         setSearchResults(buildSearchResults(resolvedCache.data, resolvedCache.index, normalizedQuery))
         setSearchOpen(true)
       } catch (error: unknown) {
         if (cancelled) return
         setSearchError(error instanceof Error && error.message
           ? error.message
-          : 'Erro ao pesquisar. Tente novamente.')
+          : 'Erro ao pesquisar. Verifique conexão ou permissões.')
       } finally {
         if (!cancelled) {
           setSearchLoading(false)
