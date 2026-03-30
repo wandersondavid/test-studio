@@ -381,6 +381,7 @@ export function CaseBuilderPage() {
   const recorderOverlayRef = useRef<HTMLDivElement | null>(null)
   const recorderSessionRef = useRef<string | null>(null)
   const recorderScreenshotUrlRef = useRef<string | null>(null)
+  const loadingRecorderScreenshotRef = useRef(false)
   const autoInputRef = useRef<HTMLInputElement | null>(null)
   const recorderDragStateRef = useRef<{
     pointerId: number
@@ -451,6 +452,10 @@ export function CaseBuilderPage() {
   useEffect(() => {
     recorderSessionRef.current = recorderSessionId
   }, [recorderSessionId])
+
+  useEffect(() => {
+    loadingRecorderScreenshotRef.current = loadingRecorderScreenshot
+  }, [loadingRecorderScreenshot])
 
   useEffect(() => {
     return () => {
@@ -665,6 +670,25 @@ export function CaseBuilderPage() {
       cancelled = true
     }
   }, [recorderSessionId, screenshotVersion])
+
+  useEffect(() => {
+    if (!recorderSessionId || !showRecorder) {
+      return
+    }
+
+    const intervalMs = recorderBusy ? 650 : 1200
+    const interval = window.setInterval(() => {
+      if (document.hidden || loadingRecorderScreenshotRef.current || !recorderSessionRef.current) {
+        return
+      }
+
+      setScreenshotVersion(version => version + 1)
+    }, intervalMs)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [recorderSessionId, recorderBusy, showRecorder])
 
   async function saveSteps(nextSteps: TestStep[]) {
     setSaving(true)
