@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY --from=builder /app/apps/api/package.json ./package.json
 COPY --from=builder /app/apps/api/dist ./dist
+COPY --from=builder /app/packages/shared-types/package.json ./packages/shared-types/package.json
+COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3001
 CMD ["node", "dist/server.js"]
