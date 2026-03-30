@@ -6,6 +6,7 @@ import path from 'node:path'
 
 const API_BASE_URL = process.env.TEST_STUDIO_API_URL ?? 'http://localhost:3001'
 const DEFAULT_POLL_INTERVAL_MS = 2000
+const DEFAULT_CI_REPORT = 'test-studio-report.json'
 const SESSION_FILE = path.join(os.homedir(), '.test-studio-cli-session.json')
 
 function printHelp() {
@@ -24,6 +25,7 @@ Uso:
   npm run test-studio -- run --environment "LOCAL DEV" --suite "Fluxo de Login"
   npm run test-studio -- run --environment "LOCAL DEV" --all
   npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --wait
+  npm run test-studio -- run --environment "LOCAL DEV" --suite "Fluxo de Login" --ci --output ./artifacts/report.json
   npm run test-studio -- watch --run 69c98087358333cb542439c5
 
 Opções:
@@ -36,6 +38,8 @@ Opções:
   --run, -r           Id do run a acompanhar
   --all               Executa todos os cenários encontrados
   --wait              Aguarda a conclusão e mostra o resultado no terminal
+  --ci                Modo pipeline (implica --wait, gera relatório e exit code)
+  --output            Caminho do relatório JSON (default: test-studio-report.json, use "-" para stdout)
   --interval          Intervalo do polling em ms (default: 2000)
   --api               Sobrescreve a URL da API (default: http://localhost:3001)
 
@@ -44,6 +48,7 @@ Exemplos:
   npm run test-studio -- run -e "LOCAL DEV" -c "LOGIN"
   npm run test-studio -- run -e "LOCAL DEV" -s "Fluxo de Login" --wait
   npm run test-studio -- run -e "LOCAL DEV" --all --wait
+  npm run test-studio -- run -e "LOCAL DEV" -s "Fluxo de Login" --ci --output -
   npm run test-studio -- watch --run 69c98087358333cb542439c5
   TEST_STUDIO_API_URL=http://localhost:3001 npm run test-studio -- list cases
 `.trim())
@@ -67,6 +72,11 @@ function parseFlags(args) {
       continue
     }
 
+    if (current === '--ci') {
+      flags.ci = true
+      continue
+    }
+
     const nextValue = args[index + 1]
     if (!nextValue || nextValue.startsWith('-')) {
       throw new Error(`Flag "${current}" precisa de um valor.`)
@@ -81,6 +91,7 @@ function parseFlags(args) {
     if (current === '--interval') flags.interval = Number(nextValue)
     if (current === '--email') flags.email = nextValue
     if (current === '--password') flags.password = nextValue
+    if (current === '--output') flags.output = nextValue
 
     index += 1
   }
@@ -170,6 +181,85 @@ function shortId(id) {
 
 function getFailedStepCount(run) {
   return run.stepResults.filter(step => step.status !== 'passed').length
+}
+
+function buildPipelineReport(runs, context = {}) {
+  const summaries = runs.map(run => ({
+    id: run._id,
+    caseId: run.caseId,
+    caseName: context.caseNameById?.get(run.caseId) ?? run.caseId,
+    environmentId: run.environmentId,
+    environmentName: context.environmentLabelById?.get(run.environmentId),
+    status: run.status,
+    durationMs: run.durationMs ?? null,
+    failedSteps: getFailedStepCount(run),
+    error: run.error ?? null,
+    stepResults: run.stepResults?.map(step => ({
+      stepId: step.stepId,
+      type: step.type,
+      status: step.status,
+      durationMs: step.durationMs,
+      error: step.error ?? null,
+    })) ?? [],
+  }))
+
+  const failedRuns = summaries.filter(run => run.status !== 'passed' || run.failedSteps > 0)
+
+  return {
+    generatedAt: new Date().toISOString(),
+    apiBaseUrl: context.apiBaseUrl ?? API_BASE_URL,
+    environment: context.environment
+      ? {
+          id: context.environment._id,
+          name: context.environment.name,
+          type: context.environment.type,
+          baseURL: context.environment.baseURL,
+        }
+      : null,
+    dataset: context.dataset
+      ? {
+          id: context.dataset._id,
+          name: context.dataset.name,
+        }
+      : null,
+    suite: context.suite
+      ? {
+          id: context.suite._id,
+          name: context.suite.name,
+        }
+      : null,
+    totals: {
+      runs: summaries.length,
+      passed: summaries.length - failedRuns.length,
+      failed: failedRuns.length,
+    },
+    status: failedRuns.length === 0 ? 'passed' : 'failed',
+    runs: summaries,
+  }
+}
+
+async function writePipelineReport(report, output) {
+  const json = JSON.stringify(report, null, 2)
+  if (output === '-') {
+    console.log(json)
+    return
+  }
+
+  const reportPath = output || DEFAULT_CI_REPORT
+  await fs.writeFile(reportPath, json)
+  console.log(`Relatório salvo em ${reportPath}`)
+}
+
+async function finalizePipelineRun(runs, context, output) {
+  const report = buildPipelineReport(runs, context)
+  await writePipelineReport(report, output)
+
+  if (report.totals.failed > 0) {
+    process.exitCode = 1
+    return
+  }
+
+  process.exitCode = 0
 }
 
 function printRunSnapshot(run, context = {}) {
@@ -337,6 +427,10 @@ async function runScenarios(flags) {
   const apiBaseUrl = flags.api ?? API_BASE_URL
   const intervalMs = Number.isFinite(flags.interval) ? flags.interval : DEFAULT_POLL_INTERVAL_MS
 
+  if (flags.ci) {
+    flags.wait = true
+  }
+
   if (!flags.environment) {
     throw new Error('Informe um ambiente com --environment.')
   }
@@ -388,17 +482,27 @@ async function runScenarios(flags) {
 
     if (flags.wait) {
       console.log('')
-      await watchRuns(
+      const context = {
+        caseNameById: new Map(cases.map(item => [item._id, item.name])),
+        environmentLabelById: new Map(environments.map(item => [item._id, `${item.name} (${item.type})`])),
+        apiBaseUrl,
+        environment,
+        dataset,
+        suite: targetSuite,
+      }
+
+      const runs = await watchRuns(
         suiteResult.createdRuns.map(run => run._id),
         {
           apiBaseUrl,
           intervalMs,
-          context: {
-            caseNameById: new Map(cases.map(item => [item._id, item.name])),
-            environmentLabelById: new Map(environments.map(item => [item._id, `${item.name} (${item.type})`])),
-          },
+          context,
         }
       )
+
+      if (flags.ci) {
+        await finalizePipelineRun(runs, context, flags.output)
+      }
     }
 
     return
@@ -442,17 +546,26 @@ async function runScenarios(flags) {
 
   if (flags.wait) {
     console.log('')
-    await watchRuns(
+    const context = {
+      caseNameById: new Map(cases.map(item => [item._id, item.name])),
+      environmentLabelById: new Map(environments.map(item => [item._id, `${item.name} (${item.type})`])),
+      apiBaseUrl,
+      environment,
+      dataset,
+    }
+
+    const runs = await watchRuns(
       queued.map(run => run._id),
       {
         apiBaseUrl,
         intervalMs,
-        context: {
-          caseNameById: new Map(cases.map(item => [item._id, item.name])),
-          environmentLabelById: new Map(environments.map(item => [item._id, `${item.name} (${item.type})`])),
-        },
+        context,
       }
     )
+
+    if (flags.ci) {
+      await finalizePipelineRun(runs, context, flags.output)
+    }
   } else {
     console.log('Dica: adicione --wait para acompanhar a conclusão no terminal.')
   }

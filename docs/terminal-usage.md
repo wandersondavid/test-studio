@@ -71,6 +71,22 @@ Com `--wait`, o CLI continua no terminal ate os runs terminarem e mostra:
 - resumo final
 - principais erros quando houver falha
 
+## Modo pipeline (CI/CD)
+
+Para integrar em rotinas de outros projetos (pipelines), use `--ci`.
+Esse modo:
+
+- implica `--wait`
+- gera um relatorio JSON
+- retorna exit code `1` quando houver falha
+
+```bash
+npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN" --ci --output ./artifacts/test-studio-report.json
+npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --ci --output -
+```
+
+Sem `--output`, o relatorio padrao sera `test-studio-report.json`.
+
 ## Acompanhar um run ja criado
 
 ```bash
@@ -93,6 +109,7 @@ TEST_STUDIO_API_URL=http://localhost:3001 npm run test-studio -- run --environme
 
 - O CLI usa a API do Test Studio.
 - O token da sessao fica salvo em `~/.test-studio-cli-session.json`.
+- Para uso automatizado, defina `TEST_STUDIO_TOKEN` no ambiente.
 - Cada execucao cria um novo run em `/test-runs/execute`.
 - Suites usam `/test-runs/execute-suite`.
 - O runner continua processando de forma assincrona, igual ao frontend.
