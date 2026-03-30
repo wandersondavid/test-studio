@@ -52,7 +52,7 @@ const PAGE_LABELS = new Map<string, string>([
   ['/notification-channels', 'Notificações'],
 ])
 
-const SEARCH_CACHE_TTL_MS = 60_000
+const SEARCH_CACHE_TTL = 60_000
 const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_MIN_CHARS = 2
 const SEARCH_RESULT_LIMIT = 5
@@ -98,7 +98,7 @@ function resolveCurrentLabel(pathname: string): string {
 }
 
 function shouldRefreshCache(cache: SearchCache | null, now: number, lastUpdated: number): boolean {
-  return !cache || now - lastUpdated > SEARCH_CACHE_TTL_MS
+  return !cache || now - lastUpdated > SEARCH_CACHE_TTL
 }
 
 function matchesSearchTerm(value: string | undefined, term: string): boolean {
@@ -205,10 +205,9 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
-      if (!searchContainerRef.current || searchContainerRef.current.contains(event.target as Node)) {
-        return
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        closeSearch()
       }
-      closeSearch()
     }
 
     function handleEscape(event: KeyboardEvent) {
@@ -274,7 +273,7 @@ export function AppShell({ children }: AppShellProps) {
         if (cancelled) return
         setSearchError(error instanceof Error && error.message
           ? error.message
-          : 'Erro ao pesquisar. Verifique a conexão.')
+          : 'Erro ao pesquisar. Tente novamente.')
       } finally {
         if (!cancelled) {
           setSearchLoading(false)
