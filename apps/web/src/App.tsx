@@ -11,6 +11,7 @@ import { HistoryPage } from './pages/HistoryPage'
 import { RunDetailPage } from './pages/RunDetailPage'
 import { LoginPage } from './pages/LoginPage'
 import { UsersPage } from './pages/UsersPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 
 export default function App() {
   const { loading, user } = useAuth()
@@ -37,6 +38,7 @@ export default function App() {
                 <Route path="/history" element={<HistoryPage />} />
                 <Route path="/history/:id" element={<RunDetailPage />} />
                 <Route path="/users" element={<UsersPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
               </Routes>
             </AppShell>
           ) : (
