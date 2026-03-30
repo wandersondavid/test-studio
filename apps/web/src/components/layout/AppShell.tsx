@@ -54,6 +54,7 @@ const PAGE_LABELS = new Map<string, string>([
 
 const SEARCH_CACHE_TTL_MS = 60_000
 const SEARCH_DEBOUNCE_MS = 250
+const SEARCH_MIN_CHARS = 2
 const SEARCH_RESULT_LIMIT = 5
 const SEARCH_FALLBACK_DESCRIPTION = 'Sem descrição'
 
@@ -77,6 +78,16 @@ type SearchResults = {
   environments: SearchItem[]
 }
 
+type SearchIndex = {
+  caseNameById: Map<string, string>
+  environmentLabelById: Map<string, string>
+}
+
+type SearchCache = {
+  data: SearchData
+  index: SearchIndex
+}
+
 function resolveCurrentLabel(pathname: string): string {
   if (pathname.startsWith('/cases/')) return 'Builder'
   if (pathname.startsWith('/suites/')) return 'Detalhe da suíte'
@@ -88,12 +99,18 @@ function matchesSearchTerm(value: string | undefined, term: string): boolean {
   return Boolean(value && value.toLowerCase().includes(term))
 }
 
-function buildSearchResults(data: SearchData, term: string): SearchResults {
+function buildSearchIndex(data: SearchData): SearchIndex {
+  return {
+    caseNameById: new Map(data.cases.map(testCase => [testCase._id, testCase.name])),
+    environmentLabelById: new Map(
+      data.environments.map(environment => [environment._id, `${environment.name} (${environment.type})`])
+    ),
+  }
+}
+
+function buildSearchResults(data: SearchData, index: SearchIndex, term: string): SearchResults {
   const normalizedTerm = term.toLowerCase()
-  const caseNameById = new Map(data.cases.map(testCase => [testCase._id, testCase.name]))
-  const environmentLabelById = new Map(
-    data.environments.map(environment => [environment._id, `${environment.name} (${environment.type})`])
-  )
+  const { caseNameById, environmentLabelById } = index
 
   const cases = data.cases
     .filter(testCase => (
@@ -166,11 +183,11 @@ export function AppShell({ children }: AppShellProps) {
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
   const searchContainerRef = useRef<HTMLDivElement | null>(null)
-  const searchCacheRef = useRef<SearchData | null>(null)
+  const searchCacheRef = useRef<SearchCache | null>(null)
   const searchCacheTimestampRef = useRef(0)
 
   const normalizedQuery = searchQuery.trim()
-  const canSearch = normalizedQuery.length >= 2
+  const canSearch = normalizedQuery.length >= SEARCH_MIN_CHARS
   const totalResults = searchResults.cases.length + searchResults.runs.length + searchResults.environments.length
 
   const closeSearch = useCallback((clearQuery = false) => {
@@ -225,7 +242,7 @@ export function AppShell({ children }: AppShellProps) {
       try {
         const now = Date.now()
         const shouldFetch = !searchCacheRef.current || now - searchCacheTimestampRef.current > SEARCH_CACHE_TTL_MS
-        let data = searchCacheRef.current
+        let cache = searchCacheRef.current
 
         if (shouldFetch) {
           const [casesResponse, runsResponse, environmentsResponse] = await Promise.all([
@@ -233,17 +250,18 @@ export function AppShell({ children }: AppShellProps) {
             api.get<TestRun[]>('/test-runs'),
             api.get<Environment[]>('/environments'),
           ])
-          data = {
+          const data = {
             cases: casesResponse.data,
             runs: runsResponse.data,
             environments: environmentsResponse.data,
           }
-          searchCacheRef.current = data
+          cache = { data, index: buildSearchIndex(data) }
+          searchCacheRef.current = cache
           searchCacheTimestampRef.current = now
         }
 
-        if (cancelled || !data) return
-        setSearchResults(buildSearchResults(data, normalizedQuery))
+        if (cancelled || !cache) return
+        setSearchResults(buildSearchResults(cache.data, cache.index, normalizedQuery))
         setSearchOpen(true)
       } catch (error: unknown) {
         if (cancelled) return
@@ -268,7 +286,7 @@ export function AppShell({ children }: AppShellProps) {
       closeSearch()
       return
     }
-    if (trimmedValue.length >= 2) {
+    if (trimmedValue.length >= SEARCH_MIN_CHARS) {
       setSearchOpen(true)
     }
   }
