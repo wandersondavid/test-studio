@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express'
 import { z } from 'zod'
 import type { TestStep, StepType } from '@test-studio/shared-types'
+import { STEP_TYPES } from '@test-studio/shared-types'
 
 export const aiRouter = Router()
 
@@ -8,11 +9,6 @@ const generateStepsSchema = z.object({
   description: z.string().min(10, 'A descrição deve ter no mínimo 10 caracteres.').max(2000, 'A descrição deve ter no máximo 2000 caracteres.'),
   baseURL: z.string().optional(),
 })
-
-const VALID_STEP_TYPES: StepType[] = [
-  'visit', 'click', 'fill', 'select', 'check',
-  'waitForVisible', 'waitForURL', 'assertText', 'assertVisible', 'waitForApi',
-]
 
 const SYSTEM_PROMPT = `You are a Playwright test automation expert. Given a plain-text description of a test scenario, generate a JSON array of test steps.
 
@@ -54,7 +50,7 @@ function parseAndValidateSteps(raw: unknown): TestStep[] {
   if (!Array.isArray(raw)) throw new Error('Expected steps to be an array')
 
   return raw
-    .filter((s: RawStep) => s && typeof s.type === 'string' && VALID_STEP_TYPES.includes(s.type as StepType))
+    .filter((s: RawStep) => s && typeof s.type === 'string' && (STEP_TYPES as readonly string[]).includes(s.type))
     .map((s: RawStep) => {
       const step: TestStep = {
         id: generateStepId(),

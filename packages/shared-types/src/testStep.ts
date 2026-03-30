@@ -10,6 +10,19 @@ export type StepType =
   | 'assertText'
   | 'assertVisible'
 
+export const STEP_TYPES: readonly StepType[] = [
+  'visit',
+  'click',
+  'fill',
+  'select',
+  'check',
+  'waitForVisible',
+  'waitForURL',
+  'waitForApi',
+  'assertText',
+  'assertVisible',
+] as const
+
 export interface StepRetryConfig {
   attempts: number
   intervalMs: number

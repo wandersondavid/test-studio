@@ -94,7 +94,7 @@ export function AiStepsModal({ open, onClose, onStepsGenerated }: AiStepsModalPr
               data-testid="ai-description-input"
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Descreva o cenário de teste em linguagem natural, ex: Acessar a página de login, preencher email admin@test.com e senha 123456, clicar em Entrar e verificar que o dashboard aparece"
+              placeholder="Descreva o cenário de teste em linguagem natural, ex: Acessar a página de login, preencher email user@example.com e senha SecurePass123!, clicar em Entrar e verificar que o dashboard aparece"
               rows={4}
               disabled={loading}
               style={{
