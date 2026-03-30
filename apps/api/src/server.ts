@@ -17,6 +17,7 @@ import { reusableBlockRouter } from './routes/reusableBlock.routes.js'
 import { analyticsRouter } from './routes/analytics.routes.js'
 import { notificationChannelRouter } from './routes/notificationChannel.routes.js'
 import { scheduleRouter } from './routes/schedule.routes.js'
+import { aiRouter } from './routes/ai.routes.js'
 import { UserService } from './services/user.service.js'
 import { hashPassword } from './utils/auth.js'
 import { startScheduler } from './services/scheduler.service.js'
@@ -42,6 +43,7 @@ app.use('/test-runs', testRunRouter)
 app.use('/analytics', requireAuth, analyticsRouter)
 app.use('/notification-channels', requireAuth, notificationChannelRouter)
 app.use('/schedules', requireAuth, scheduleRouter)
+app.use('/ai', requireAuth, aiRouter)
 
 app.get('/health', (_, res) => res.json({ status: 'ok' }))
 
