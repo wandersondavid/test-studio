@@ -2,10 +2,13 @@ import { Router, Request, Response, NextFunction } from 'express'
 import type { TestStep } from '@test-studio/shared-types'
 import { TestCaseService } from '../services/testCase.service.js'
 import { AuditLogService } from '../services/auditLog.service.js'
+import { EnvironmentService } from '../services/environment.service.js'
 import { bulkDeleteTestCasesSchema, createTestCaseSchema, updateTestCaseSchema } from '../schemas/testCase.schema.js'
+import { generateSpecFile } from '../services/export.service.js'
 
 const service = new TestCaseService()
 const auditLogService = new AuditLogService()
+const environmentService = new EnvironmentService()
 export const testCaseRouter = Router()
 
 function stepSignature(step: TestStep): string {
@@ -47,6 +50,37 @@ testCaseRouter.post('/bulk-delete', async (req: Request, res: Response, next: Ne
       deletedCount: deletedIds.length,
       clearedSetupRefsCount,
     })
+  } catch (err) { next(err) }
+})
+
+testCaseRouter.get('/:id/export', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const testCase = await service.resolveExecutableById(req.params.id)
+    if (!testCase) { res.status(404).json({ error: 'Não encontrado' }); return }
+
+    const environmentId = req.query.environmentId as string | undefined
+    let envName: string | undefined
+    let baseURL = ''
+
+    if (environmentId) {
+      const env = await environmentService.findById(environmentId)
+      if (env) {
+        envName = env.name
+        baseURL = env.baseURL
+      }
+    }
+
+    const content = generateSpecFile({
+      caseName: testCase.name,
+      steps: testCase.steps as TestStep[],
+      envName,
+      baseURL,
+    })
+
+    const safeName = testCase.name.replace(/[^a-z0-9_-]/gi, '-').toLowerCase()
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.spec.ts"`)
+    res.send(content)
   } catch (err) { next(err) }
 })
 

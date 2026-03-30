@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react'
 import { useParams } from 'react-router-dom'
+import { Download } from 'lucide-react'
 import { api } from '../services/api'
 import type {
   AuditEntry,
@@ -17,6 +18,7 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { ExportModal } from '../components/ExportModal'
 import { getAuthToken } from '../services/session'
 import {
   buildParameterValueMap,
@@ -423,6 +425,7 @@ export function CaseBuilderPage() {
 
   const [environments, setEnvironments] = useState<Environment[]>([])
   const [showRecorder, setShowRecorder] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const [recorderBusy, setRecorderBusy] = useState(false)
   const [recorderActive, setRecorderActive] = useState(false)
   const [recorderEnvironmentId, setRecorderEnvironmentId] = useState('')
@@ -1434,6 +1437,10 @@ export function CaseBuilderPage() {
         description="Monte steps manualmente ou grave interações reais em uma sessão Playwright sem sair do workspace."
         actions={
           <>
+            <Button variant="outline" data-testid="btn-export" onClick={() => setShowExportModal(true)}>
+              <Download size={16} style={{ marginRight: 6 }} />
+              Exportar
+            </Button>
             <Button variant="outline" data-testid="btn-toggle-recorder" onClick={() => setShowRecorder(current => !current)}>
               {showRecorder ? 'Ocultar gravador' : 'Gravar cenário'}
             </Button>
@@ -2404,6 +2411,12 @@ export function CaseBuilderPage() {
           ))}
         </div>
       </ConfirmDialog>
+      <ExportModal
+        open={showExportModal}
+        caseId={id!}
+        caseName={testCase.name}
+        onClose={() => setShowExportModal(false)}
+      />
     </div>
   )
 }
