@@ -77,7 +77,7 @@ Para integrar em rotinas de outros projetos (pipelines), use `--ci`.
 Esse modo:
 
 - implica `--wait`
-- gera um relatorio JSON
+- gera um relatório JSON
 - retorna exit code `1` quando houver falha
 
 ```bash
@@ -85,7 +85,7 @@ npm run test-studio -- run --environment "LOCAL DEV" --suite "LOGIN" --ci --outp
 npm run test-studio -- run --environment "LOCAL DEV" --case "LOGIN" --ci --output -
 ```
 
-Sem `--output`, o relatorio padrao sera `test-studio-report.json`.
+Sem `--output`, o relatório padrão será `test-studio-report.json`.
 
 ## Acompanhar um run ja criado
 
